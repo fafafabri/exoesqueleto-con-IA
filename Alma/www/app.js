@@ -23,6 +23,38 @@ let userName = "usuario";
 // Datos de la Terapia (Simulación de Base de Datos Local)
 let patientData = { reps: 0, maxAngle: 0 };
 
+// ===== INICIALIZACIÓN DEL MOTOR NLP Y BD =====
+let nlpEngine = null;
+let dbManager = null;
+let sesionActualId = null;
+let pacienteId = 'paciente_001'; // ID único del paciente
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Inicializar el motor NLP cuando el DOM esté listo
+    if (typeof NLPEngine !== 'undefined') {
+        nlpEngine = new NLPEngine();
+        console.log('✅ NLP Engine inicializado correctamente');
+    } else {
+        console.warn('⚠️ NLP Engine no disponible, usando análisis simple');
+    }
+
+    // Inicializar el gestor de base de datos
+    if (typeof DatabaseManager !== 'undefined') {
+        dbManager = new DatabaseManager();
+        console.log('✅ Database Manager inicializado');
+        
+        // Crear paciente inicial si no existe
+        dbManager.guardarPaciente({
+            id: pacienteId,
+            nombre: userName,
+            diagnostico: 'Rehabilitación de miembros superiores',
+            objetivoRepeticiones: 10
+        });
+    } else {
+        console.warn('⚠️ Database Manager no disponible');
+    }
+});
+
 // ---------------------------------------------------------
 // 1. CONTROL DE LA INTERFAZ (Paneles)
 // ---------------------------------------------------------
@@ -146,13 +178,28 @@ async function conectarAlHardware(bluetoothDevice) {
 
 btnStartSession.addEventListener('click', startSession);
 
-function startSession() {
+async function startSession() {
     btnStartSession.style.display = 'none';
     almaContainer.classList.add('listening'); // Empezar a pulsar cuando escucha
     transcriptBox.innerHTML = "Micrófono abierto.<br>Di <b>'Alma'</b> seguido de tu instrucción.";
     updateAlmaStatusText("Escuchando...");
     setAlmaEmotion('normal'); // Alma en estado normal mientras escucha
     speak(`Bienvenido de nuevo, ${userName}. Sesión iniciada. Estoy lista para tus comandos.`);
+    
+    // Crear sesión en la BD si está disponible
+    if (dbManager) {
+        try {
+            const sesion = await dbManager.crearSesion({
+                pacienteId: pacienteId,
+                notas: `Sesión iniciada automáticamente - ${new Date().toLocaleString()}`
+            });
+            sesionActualId = sesion.id;
+            console.log(`📊 Nueva sesión creada: ID ${sesionActualId}`);
+        } catch (error) {
+            console.error('Error al crear sesión:', error);
+        }
+    }
+    
     // La reconocimiento ya está en marcha, no es necesario iniciarlo aquí.
 }
 
@@ -186,10 +233,137 @@ recognition.onend = () => {
 };
 
 // ---------------------------------------------------------
-// 4. LÓGICA DE CONTROL Y MONITOREO CLÍNICO
+// 4. LÓGICA DE CONTROL Y MONITOREO CLÍNICO (CON NLP)
 // ---------------------------------------------------------
 
 function analizarIntencionLocal(texto) {
+    // Usar NLP Engine si está disponible, sino usar análisis simple
+    if (nlpEngine) {
+        return analizarConNLP(texto);
+    } else {
+        return analizarConMetodoSimple(texto);
+    }
+}
+
+/**
+ * Análisis inteligente con NLP
+ */
+async function analizarConNLP(texto) {
+    // Analizar la intención con el motor NLP
+    const analisis = nlpEngine.analizarIntencion(texto);
+    const respuesta = nlpEngine.generarRespuesta(analisis, patientData.reps);
+    const sentimiento = nlpEngine.analizarSentimiento(texto);
+    
+    // Registrar el comando para aprendizaje
+    if (analisis.intencion) {
+        nlpEngine.registrarComando(analisis.intencion, texto);
+    }
+
+    // Guardar interacción en la BD si la sesión está activa
+    if (dbManager && sesionActualId) {
+        try {
+            await dbManager.guardarInteraccion(sesionActualId, {
+                textoUsuario: texto,
+                intencion: analisis.intencion,
+                confianza: analisis.confianza,
+                sentimiento: sentimiento,
+                respuestaAlma: respuesta.mensaje,
+                accion: respuesta.accion
+            });
+        } catch (error) {
+            console.error('Error al guardar interacción:', error);
+        }
+    }
+
+    // Manejar la respuesta según la acción
+    switch (respuesta.accion) {
+        case 'EMERGENCIA':
+            setAlmaEmotion('alert');
+            enviarAlESP32("EMERGENCIA");
+            speak(respuesta.mensaje);
+            updateAlmaStatusText("¡ALERTA! Motor detenido.");
+            cerrarTodosLosPaneles();
+            break;
+
+        case 'FLEXION':
+            setAlmaEmotion('happy');
+            enviarAlESP32("FLEXION");
+            speak(respuesta.mensaje);
+            updateAlmaStatusText("Realizando flexión.");
+            patientData.reps++;
+            actualizarPanelClinico();
+            break;
+
+        case 'REPOSO':
+            setAlmaEmotion('normal');
+            enviarAlESP32("REPOSO");
+            speak(respuesta.mensaje);
+            updateAlmaStatusText("Reposando...");
+            break;
+
+        case 'MOSTRAR_PROGRESO':
+            speak(respuesta.mensaje);
+            abrirPanelControlado('progressSheet');
+            setAlmaEmotion('happy');
+            break;
+
+        case 'ABRIR_AJUSTES':
+            speak(respuesta.mensaje);
+            abrirPanelControlado('settingsSheet');
+            setAlmaEmotion('normal');
+            break;
+
+        case 'TERMINAR':
+            setAlmaEmotion('normal');
+            enviarAlESP32("REPOSO");
+            updateAlmaStatusText("Finalizando sesión.");
+            speak(respuesta.mensaje);
+            
+            // Finalizar sesión en la BD
+            if (dbManager && sesionActualId) {
+                try {
+                    await dbManager.finalizarSesion(sesionActualId, {
+                        notas: 'Sesión finalizada por comando del usuario',
+                        feedback: [respuesta.mensaje]
+                    });
+                    console.log(`✅ Sesión ${sesionActualId} finalizada en BD`);
+                    sesionActualId = null;
+                } catch (error) {
+                    console.error('Error al finalizar sesión:', error);
+                }
+            }
+            
+            programarProximaSesion();
+            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                bluetoothDevice.gatt.disconnect();
+            }
+            return;
+
+        case 'IGNORAR':
+            speak(respuesta.mensaje);
+            setAlmaEmotion('normal');
+            updateAlmaStatusText("Escuchando...");
+            break;
+
+        case 'NO_RECONOCIDO':
+        default:
+            speak(respuesta.mensaje);
+            updateAlmaStatusText("Comando no reconocido.");
+            setAlmaEmotion('alert');
+            setTimeout(() => {
+                setAlmaEmotion('normal');
+                updateAlmaStatusText("Escuchando...");
+            }, 2000);
+    }
+
+    // Log para debugging
+    console.log(`NLP - Intención: ${analisis.intencion} (confianza: ${(analisis.confianza * 100).toFixed(1)}%)`);
+}
+
+/**
+ * Análisis simple como fallback (método original)
+ */
+function analizarConMetodoSimple(texto) {
     // A. COMANDOS DE NAVEGACIÓN (Manipulación de la Interfaz)
     if (texto.includes("registro") || texto.includes("progreso") || texto.includes("sesiones")) {
         speak("¡Claro! Abriendo tu panel de progreso clínico.");
@@ -199,7 +373,7 @@ function analizarIntencionLocal(texto) {
     else if (texto.includes("ajustes") || texto.includes("configuración") || texto.includes("opciones")) {
         speak("Accediendo a los ajustes del sistema. Aquí puedes personalizar mi experiencia.");
         abrirPanelControlado('settingsSheet');
-        setAlmaEmotion('normal'); // Ajustar emoción para ajustes
+        setAlmaEmotion('normal');
     }
     else if (texto.includes("cierra") || texto.includes("regresa") || texto.includes("atrás") || texto.includes("oculta")) {
         speak("Entendido, regresando a la pantalla principal.");
@@ -211,40 +385,39 @@ function analizarIntencionLocal(texto) {
     // B. COMANDOS MECATRÓNICOS (Seguridad y Motor)
     else if (texto.includes("duele") || texto.includes("para") || texto.includes("detente") || texto.includes("emergencia")) {
         setAlmaEmotion('alert');
-        enviarAlESP32("EMERGENCIA"); // Comando más específico para el ESP32
+        enviarAlESP32("EMERGENCIA");
         speak("Alerta detectada. Deteniendo motor y liberando tensión.");
         updateAlmaStatusText("¡ALERTA! Motor detenido.");
-        cerrarTodosLosPaneles(); // Prioridad: ver a Alma en alerta
+        cerrarTodosLosPaneles();
     }
     else if (texto.includes("esfuerzo") || texto.includes("subir") || texto.includes("dobla")) {
         setAlmaEmotion('happy');
-        enviarAlESP32("FLEXION"); // Comando más específico para el ESP32
+        enviarAlESP32("FLEXION");
         speak("Iniciando flexión controlada. Mantén la calma.");
         updateAlmaStatusText("Realizando flexión.");
         patientData.reps++;
         actualizarPanelClinico();
     }
     
-    // C. COMANDOS DE DESPEDIDA Y PROGRAMACIÓN (Nuevo)
+    // C. COMANDOS DE DESPEDIDA
     else if (texto.includes("terminar") || texto.includes("fin") || texto.includes("hasta mañana") || texto.includes("adiós")) {
         setAlmaEmotion('normal');
-        enviarAlESP32("REPOSO"); // Comando más específico para el ESP32
+        enviarAlESP32("REPOSO");
         updateAlmaStatusText("Finalizando sesión.");
         speak("Excelente trabajo hoy. He guardado tu progreso. Hasta la próxima.");
         programarProximaSesion();
         
-        // Desconectar y reiniciar la UI al estado inicial
         if (bluetoothDevice && bluetoothDevice.gatt.connected) {
             bluetoothDevice.gatt.disconnect();
         }
         return;
     }
-    // --- COMANDOS DE CONEXIÓN Y SESIÓN (Controlados por voz) ---
+    // COMANDOS DE CONEXIÓN Y SESIÓN
     else if ((texto.includes("conecta") || texto.includes("vincula") || texto.includes("enlaza")) && btnConnect.style.display !== 'none') {
         speak("Iniciando la búsqueda de dispositivos. Por favor, selecciona el exoesqueleto.");
         updateAlmaStatusText("Buscando dispositivos...");
         btnConnect.click();
-        return; // Salir después de ejecutar el comando
+        return;
     }
     else if ((texto.includes("inicia sesión") || texto.includes("empecemos")) && btnStartSession.style.display !== 'none') {
         startSession();
@@ -256,7 +429,7 @@ function analizarIntencionLocal(texto) {
         disconnectDevice();
         return;
     }
-    else if (texto.length > 0) { // Si no es un comando reconocido
+    else if (texto.length > 0) {
         speak("Lo siento, no entendí ese comando. ¿Podrías repetirlo?");
         updateAlmaStatusText("Comando no reconocido.");
         setAlmaEmotion('alert');
@@ -290,9 +463,23 @@ function cerrarTodosLosPaneles() {
     updateAlmaStatusText("Escuchando...");
 }
 
-function actualizarPanelClinico() {
+async function actualizarPanelClinico() {
     statReps.textContent = patientData.reps;
     statAngle.textContent = patientData.maxAngle + "°";
+
+    // Guardar repetición en la BD si la sesión está activa
+    if (dbManager && sesionActualId) {
+        try {
+            await dbManager.guardarRepeticion(sesionActualId, {
+                numero: patientData.reps,
+                angle: patientData.maxAngle,
+                maxAngleAlcanzado: patientData.maxAngle,
+                esfuerzo: 'normal'
+            });
+        } catch (error) {
+            console.error('Error al guardar repetición:', error);
+        }
+    }
 
     // Feedback más dinámico y personalizado
     if (patientData.reps === 0) {

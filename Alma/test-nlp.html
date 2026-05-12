@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test NLP Engine</title>
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+        h1 {
+            color: #00897b;
+        }
+        .test-input {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #00897b;
+            border-radius: 5px;
+            font-family: 'Poppins', sans-serif;
+        }
+        button {
+            padding: 10px 20px;
+            background: #00897b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        button:hover {
+            background: #00695c;
+        }
+        .result {
+            background: #e0f2f1;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #00897b;
+        }
+        .result h3 {
+            margin-top: 0;
+            color: #00897b;
+        }
+        .test-cases {
+            margin: 20px 0;
+        }
+        .test-case {
+            padding: 10px;
+            margin: 10px 0;
+            background: #f9f9f9;
+            border-left: 3px solid #ccc;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .test-case:hover {
+            background: #f0f0f0;
+        }
+        .error {
+            color: #d32f2f;
+            background: #ffebee;
+            border-left-color: #d32f2f;
+        }
+        .success {
+            color: #388e3c;
+            background: #e8f5e9;
+            border-left-color: #388e3c;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧠 Test NLP Engine - Alma</h1>
+    
+    <div class="test-container">
+        <h2>Test Manual</h2>
+        <div class="test-input">
+            <input type="text" id="textInput" placeholder="Escribe un comando... ej: 'duele el brazo'" value="duele mucho">
+            <button onclick="testNLP()">Analizar</button>
+        </div>
+        <div id="result"></div>
+    </div>
+
+    <div class="test-container">
+        <h2>Casos de Prueba Predefinidos</h2>
+        <div class="test-cases">
+            <!-- Los casos se generarán con JavaScript -->
+        </div>
+    </div>
+
+    <script src="www/nlp.js"></script>
+    <script>
+        // Casos de prueba
+        const testCases = [
+            { texto: "duele mucho el brazo", esperado: "EMERGENCIA", descripcion: "Alerta por dolor" },
+            { texto: "me duele", esperado: "EMERGENCIA", descripcion: "Dolor simple" },
+            { texto: "no me duele", esperado: "IGNORAR/NO EMERGENCIA", descripcion: "Negación de dolor" },
+            { texto: "siguiente flexión", esperado: "FLEXION", descripcion: "Continuar ejercicio" },
+            { texto: "dobla el brazo", esperado: "FLEXION", descripcion: "Comando de flexión" },
+            { texto: "descansa un poco", esperado: "REPOSO", descripcion: "Pausa solicitada" },
+            { texto: "muéstrame mi progreso", esperado: "PROGRESO", descripcion: "Ver estadísticas" },
+            { texto: "ajustes", esperado: "AJUSTES", descripcion: "Acceso a configuración" },
+            { texto: "hasta mañana", esperado: "TERMINAR", descripcion: "Fin de sesión" },
+            { texto: "alma hola", esperado: "NO RECONOCIDO", descripcion: "Comando desconocido" }
+        ];
+
+        let nlpEngine = null;
+
+        // Inicializar
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Inicializando NLP Engine...');
+            nlpEngine = new NLPEngine();
+            console.log('✅ NLP Engine inicializado');
+
+            // Generar casos de prueba
+            generarCasosPrueba();
+
+            // Agregar enter al input
+            document.getElementById('textInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') testNLP();
+            });
+        });
+
+        function testNLP() {
+            const texto = document.getElementById('textInput').value;
+            if (!texto.trim()) return;
+
+            const analisis = nlpEngine.analizarIntencion(texto);
+            const respuesta = nlpEngine.generarRespuesta(analisis, 5);
+
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `
+                <div class="result">
+                    <h3>📊 Análisis</h3>
+                    <p><strong>Texto:</strong> "${texto}"</p>
+                    <p><strong>Intención detectada:</strong> <span style="color: #00897b; font-weight: 600;">${analisis.intencion || 'Ninguna'}</span></p>
+                    <p><strong>Confianza:</strong> ${(analisis.confianza * 100).toFixed(1)}%</p>
+                    <p><strong>¿Contiene negación?:</strong> ${analisis.tieneNegacion ? '✅ Sí' : '❌ No'}</p>
+                    <p><strong>Sentimiento:</strong> ${nlpEngine.analizarSentimiento(texto)}</p>
+                    <hr>
+                    <p><strong>Acción:</strong> ${respuesta.accion}</p>
+                    <p><strong>Respuesta de Alma:</strong> <em>"${respuesta.mensaje}"</em></p>
+                </div>
+            `;
+        }
+
+        function generarCasosPrueba() {
+            const container = document.querySelector('.test-cases');
+            container.innerHTML = '';
+
+            testCases.forEach((test, idx) => {
+                const testDiv = document.createElement('div');
+                testDiv.className = 'test-case';
+                testDiv.innerHTML = `
+                    <strong>${idx + 1}. ${test.descripcion}</strong><br>
+                    <small>Entrada: "${test.texto}"</small><br>
+                    <small>Esperado: ${test.esperado}</small>
+                `;
+                testDiv.onclick = () => {
+                    document.getElementById('textInput').value = test.texto;
+                    testNLP();
+                };
+                container.appendChild(testDiv);
+            });
+        }
+
+        // Hacer testNLP global para el botón
+        window.testNLP = testNLP;
+    </script>
+</body>
+</html>

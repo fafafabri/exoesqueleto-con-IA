@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Database - Alma</title>
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+        h1 { color: #00897b; }
+        h2 { color: #00695c; }
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }
+        button {
+            padding: 10px 15px;
+            background: #00897b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        button:hover { background: #00695c; }
+        button.danger {
+            background: #d32f2f;
+        }
+        button.danger:hover {
+            background: #b71c1c;
+        }
+        .result {
+            background: #e0f2f1;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #00897b;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error {
+            background: #ffebee;
+            border-left-color: #d32f2f;
+            color: #d32f2f;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #00897b;
+            color: white;
+            font-weight: 600;
+        }
+        tr:hover {
+            background: #f5f5f5;
+        }
+        .stat-box {
+            display: inline-block;
+            padding: 15px 20px;
+            margin: 5px;
+            background: #e0f2f1;
+            border-radius: 5px;
+            border-left: 4px solid #00897b;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #00897b;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🗄️ Test Base de Datos - Alma</h1>
+    <p><em>Prueba la persistencia de sesiones de pacientes con IndexedDB</em></p>
+
+    <div class="container">
+        <h2>Control de Paciente</h2>
+        <div class="btn-group">
+            <button onclick="crearPaciente()">👤 Crear Paciente</button>
+            <button onclick="mostrarPaciente()">👁️ Ver Datos Paciente</button>
+            <button onclick="mostrarEstadisticas()">📊 Estadísticas de Progreso</button>
+        </div>
+        <div id="pacienteResult" class="result" style="display:none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Control de Sesiones</h2>
+        <div class="btn-group">
+            <button onclick="crearSesion()">▶️ Crear Sesión</button>
+            <button onclick="simularSesion()">🎬 Simular Sesión Completa</button>
+            <button onclick="listarSesiones()">📋 Listar Sesiones</button>
+            <button onclick="mostrarUltimaSesion()">🔍 Última Sesión</button>
+        </div>
+        <div id="sesionResult" class="result" style="display:none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Control de Datos</h2>
+        <div class="btn-group">
+            <button onclick="exportarDatos()">💾 Exportar JSON</button>
+            <button onclick="limpiarBD()" class="danger">🗑️ Limpiar BD (Cuidado!)</button>
+            <button onclick="mostrarEstadoFS()">ℹ️ Estado del Sistema</button>
+        </div>
+        <div id="dataResult" class="result" style="display:none;"></div>
+    </div>
+
+    <div class="container" id="statsContainer" style="display:none;">
+        <h2>Estadísticas Resumidas</h2>
+        <div id="statsDisplay"></div>
+    </div>
+
+    <script src="www/database.js"></script>
+    <script>
+        let db = null;
+        const pacienteId = 'paciente_001';
+
+        // Inicializar
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('Inicializando Database Manager...');
+            db = new DatabaseManager();
+            await new Promise(r => setTimeout(r, 1000)); // Esperar a que se inicialice
+            console.log('✅ Base de datos lista');
+            mostrarEstadoFS();
+        });
+
+        function mostrarResultado(elementId, html, esError = false) {
+            const elem = document.getElementById(elementId);
+            elem.innerHTML = html;
+            elem.classList.toggle('error', esError);
+            elem.style.display = 'block';
+        }
+
+        async function crearPaciente() {
+            try {
+                const paciente = await db.guardarPaciente({
+                    id: pacienteId,
+                    nombre: 'Juan García',
+                    edad: 45,
+                    diagnostico: 'Lesión de hombro izquierdo - Fase de rehabilitación',
+                    objetivoRepeticiones: 15,
+                    notas: 'Paciente con buena adherencia al tratamiento'
+                });
+                mostrarResultado('pacienteResult', `
+                    <h3>✅ Paciente Creado</h3>
+                    <p><strong>ID:</strong> ${paciente.id}</p>
+                    <p><strong>Nombre:</strong> ${paciente.nombre}</p>
+                    <p><strong>Edad:</strong> ${paciente.edad}</p>
+                    <p><strong>Diagnóstico:</strong> ${paciente.diagnostico}</p>
+                    <p><strong>Objetivo:</strong> ${paciente.objetivoRepeticiones} repeticiones</p>
+                    <p><strong>Registro:</strong> ${new Date(paciente.fechaRegistro).toLocaleString()}</p>
+                `);
+            } catch (error) {
+                mostrarResultado('pacienteResult', `❌ Error: ${error.message}`, true);
+            }
+        }
+
+        async function mostrarPaciente() {
+            try {
+                const paciente = await db.obtenerPaciente(pacienteId);
+                if (!paciente) {
+                    mostrarResultado('pacienteResult', '❌ Paciente no encontrado. Crea uno primero.', true);
+                    return;
+                }
+                mostrarResultado('pacienteResult', `
+                    <h3>👤 Datos del Paciente</h3>
+                    <table>
+                        <tr><th>Campo</th><th>Valor</th></tr>
+                        <tr><td>ID</td><td>${paciente.id}</td></tr>
+                        <tr><td>Nombre</td><td>${paciente.nombre}</td></tr>
+                        <tr><td>Edad</td><td>${paciente.edad}</td></tr>
+                        <tr><td>Diagnóstico</td><td>${paciente.diagnostico}</td></tr>
+                        <tr><td>Objetivo (reps)</td><td>${paciente.objetivoRepeticiones}</td></tr>
+                        <tr><td>Notas</td><td>${paciente.notas}</td></tr>
+                    </table>
+                `);
+            } catch (error) {
+                mostrarResultado('pacienteResult', `❌ Error: ${error.message}`, true);
+            }
+        }
+
+        async function crearSesion() {
+            try {
+                const sesion = await db.crearSesion({
+                    pacienteId: pacienteId,
+                    notas: 'Sesión de prueba iniciada'
+                });
+                mostrarResultado('sesionResult', `
+                    <h3>✅ Sesión Creada</h3>
+                    <p><strong>ID Sesión:</strong> ${sesion.id}</p>
+                    <p><strong>Inicio:</strong> ${new Date(sesion.fecha).toLocaleString()}</p>
+                    <p><strong>Estado:</strong> ${sesion.estado}</p>
+                    <p><em>ID guardado en caché. Usa "Simular Sesión Completa" para llenarla con datos.</em></p>
+                `);
+                window.lastSesionId = sesion.id;
+            } catch (error) {
+                mostrarResultado('sesionResult', `❌ Error: ${error.message}`, true);
+            }
+        }
+
+        async function simularSesion() {
+            try {
+                // Crear sesión
+                const sesion = await db.crearSesion({
+                    pacienteId: pacienteId,
+                    notas: 'Sesión simulada de prueba'
+                });
+
+                // Simular 8 repeticiones con ángulos variados
+                const angles = [45, 52, 58, 62, 65, 68, 70, 71];
+                for (let i = 0; i < angles.length; i++) {
+                    await new Promise(r => setTimeout(r, 100));
+                    await db.guardarRepeticion(sesion.id, {
+                        numero: i + 1,
+                        angle: angles[i],
+                        maxAngleAlcanzado: angles[i],
+                        duracion: 8 + Math.random() * 4,
+                        esfuerzo: 'normal'
+                    });
+                }
+
+                // Agregar notas clínicas
+                await db.guardarNotaClinica(sesion.id, {
+                    tipo: 'progreso',
+                    contenido: 'Excelente sesión. Paciente mostró buen control articular.'
+                });
+
+                // Finalizar sesión
+                const sesionFinal = await db.finalizarSesion(sesion.id, {
+                    notas: 'Sesión completada exitosamente',
+                    feedback: ['Gran progreso observable']
+                });
+
+                mostrarResultado('sesionResult', `
+                    <h3>✅ Sesión Simulada Completada</h3>
+                    <p><strong>ID:</strong> ${sesionFinal.id}</p>
+                    <p><strong>Duración:</strong> ${sesionFinal.duracion} minutos</p>
+                    <p><strong>Repeticiones:</strong> ${sesionFinal.repeticiones}</p>
+                    <p><strong>Ángulo Máximo:</strong> ${sesionFinal.maxAngle}°</p>
+                    <p><strong>Ángulo Promedio:</strong> ${sesionFinal.promAngle}°</p>
+                    <p><strong>Estado:</strong> ${sesionFinal.estado}</p>
+                `);
+            } catch (error) {
+                mostrarResultado('sesionResult', `❌ Error: ${error.message}`, true);
+            }
+        }
+
+        async function listarSesiones() {
+            try {
+                const sesiones = await db.obtenerSesionesPaciente(pacienteId);
+                if (sesiones.length === 0) {
+                    mostrarResultado('sesionResult', '📭 No hay sesiones. Crea una primero.', false);
+                    return;
+                }
+
+                let html = '<h3>📋 Sesiones del Paciente</h3><table><tr><th>ID</th><th>Fecha</th><th>Estado</th><th>Reps</th><th>Ángulo Máx</th><th>Duración</th></tr>';
+                sesiones.forEach(s => {
+                    const fecha = new Date(s.fecha).toLocaleDateString();
+                    html += `<tr>
+                        <td>#${s.id}</td>
+                        <td>${fecha}</td>
+                        <td>${s.estado}</td>
+                        <td>${s.repeticiones}</td>
+                        <td>${s.maxAngle}°</td>
+                        <td>${s.duracion} min</td>
+                    </tr>`;
+                });
+                html += '</table>';
+                mostrarResultado('sesionResult', html);
+            } catch (error) {
+                mostrarResultado('sesionResult', `❌ Error: ${error.message}`, true);
+            }
+        }
+
+        async function mostrarUltimaSesion() {
+            try {
+                const sesiones = await db.obtenerSesionesPaciente(pacienteId);
+                if (sesiones.length === 0) {
+                    mostrarResultado('sesionResult', '📭 No hay sesiones.', false);
+                    return;
+                }
+
+                const ultima = sesiones[0];
+                const reps = await db.obtenerRepeticionesSesion(ultima.id);
+
+                let html = `<h3>🔍 Última Sesión</h3>
+                    <p><strong>Fecha:</strong> ${new Date(ultima.fecha).toLocaleString()}</p>
+                    <p><strong>Estado:</strong> ${ultima.estado}</p>
+                    <p><strong>Repeticiones:</strong> ${ultima.repeticiones}</p>
+                    <p><strong>Progresión de Ángulos:</strong> ${reps.map(r => r.angle).join('° → ')}°</p>`;
+                
+                mostrarResultado('sesionResult', html);
+            } catch (error) {
+                mostrarResultado('sesionResult', `❌ Error: ${error.message}`, true);
+            }
+        }
+
+        async function mostrarEstadisticas() {
+            try {
+                const stats = await db.obtenerEstadisticasPaciente(pacienteId, 30);
+                if (!stats) {
+                    mostrarResultado('pacienteResult', '❌ No hay datos suficientes.', true);
+                    return;
+                }
+
+                let html = '<h3>📊 Estadísticas de Progreso</h3>';
+                html += `<div class="stat-box"><div class="stat-value">${stats.totalSesiones}</div><div class="stat-label">Sesiones</div></div>`;
+                html += `<div class="stat-box"><div class="stat-value">${stats.totalRepeticiones}</div><div class="stat-label">Repeticiones</div></div>`;
+                html += `<div class="stat-box"><div class="stat-value">${stats.promRepeticiones}</div><div class="stat-label">Promedio Reps</div></div>`;
+                html += `<div class="stat-box"><div class="stat-value">${stats.maxAngleAlcanzado}°</div><div class="stat-label">Máx Ángulo</div></div>`;
+                html += `<div class="stat-box"><div class="stat-value">${stats.promAngle}°</div><div class="stat-label">Ángulo Promedio</div></div>`;
+                
+                if (stats.tendencia) {
+                    html += `<p><strong>Tendencia:</strong> ${stats.tendencia.direccion} (${stats.tendencia.cambioReps > 0 ? '+' : ''}${stats.tendencia.cambioReps}% reps)</p>`;
+                }
+
+                mostrarResultado('pacienteResult', html);
+            } catch (error) {
+                mostrarResultado('pacienteResult', `❌ Error: ${error.message}`, true);
+            }
+        }
+
+        async function exportarDatos() {
+            try {
+                const datos = await db.exportarDatos(pacienteId);
+                const json = JSON.stringify(datos, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `alma_datos_${pacienteId}_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                mostrarResultado('dataResult', `💾 Descarga iniciada: ${a.download}`);
+            } catch (error) {
+                mostrarResultado('dataResult', `❌ Error: ${error.message}`, true);
+            }
+        }
+
+        async function limpiarBD() {
+            if (confirm('⚠️ ¿Estás seguro? Esto eliminará TODOS los datos de la base de datos.')) {
+                try {
+                    await db.limpiarBaseDatos();
+                    mostrarResultado('dataResult', '✅ Base de datos limpiada completamente.');
+                } catch (error) {
+                    mostrarResultado('dataResult', `❌ Error: ${error.message}`, true);
+                }
+            }
+        }
+
+        async function mostrarEstadoFS() {
+            try {
+                const html = `
+                    <h3>ℹ️ Estado del Sistema</h3>
+                    <p><strong>Base de Datos:</strong> ${db && db.ready ? '✅ Lista' : '⏳ Inicializando'}</p>
+                    <p><strong>Nombre:</strong> ${db.dbName}</p>
+                    <p><strong>Versión:</strong> ${db.dbVersion}</p>
+                    <p><strong>Paciente ID:</strong> ${pacienteId}</p>
+                    <p><strong>Storage Type:</strong> IndexedDB (nativo del navegador)</p>
+                    <p><em>Los datos se guardan localmente en el dispositivo y persisten entre sesiones.</em></p>
+                `;
+                mostrarResultado('dataResult', html);
+            } catch (error) {
+                mostrarResultado('dataResult', `❌ Error: ${error.message}`, true);
+            }
+        }
+    </script>
+</body>
+</html>

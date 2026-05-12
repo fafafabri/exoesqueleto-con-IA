@@ -1,0 +1,399 @@
+// Referencias al DOM
+const btnConnect = document.getElementById('btnConnect');
+const statusBadge = document.getElementById('statusBadge');
+const transcriptBox = document.getElementById('transcript-box');
+const btnStartSession = document.getElementById('btnStartSession');
+const almaBody = document.getElementById('almaBody');
+const almaContainer = document.querySelector('.alma-container'); // Referencia al contenedor para la animación de escucha
+const almaEyes = document.querySelectorAll('.eye');
+const almaStatusText = document.getElementById('almaStatusText');
+
+// Referencias del Panel Clínico
+const statReps = document.getElementById('statReps');
+const statAngle = document.getElementById('statAngle');
+const iaFeedback = document.getElementById('iaFeedback');
+
+// Variables Globales
+let bluetoothDevice = null;
+let bleCharacteristicTX; 
+const WAKE_WORD = "alma";
+let isConnected = false;
+// Placeholder para el nombre del usuario, se podría cargar de un perfil
+let userName = "usuario";
+// Datos de la Terapia (Simulación de Base de Datos Local)
+let patientData = { reps: 0, maxAngle: 0 };
+
+// ---------------------------------------------------------
+// 1. CONTROL DE LA INTERFAZ (Paneles)
+// ---------------------------------------------------------
+function toggleSheet(sheetId) {
+    const sheet = document.getElementById(sheetId);
+    sheet.classList.toggle('open');
+}
+
+// Emociones de Alma (UX visual)
+function setAlmaEmotion(emotion) {
+    // Centralizamos el control de las emociones únicamente a través del atributo `data-emotion`.
+    // El CSS se encargará de todas las transiciones y estilos.
+    almaBody.dataset.emotion = emotion; // 'normal', 'happy', 'alert', 'processing'
+}
+
+function updateAlmaStatusText(text) {
+    almaStatusText.textContent = text;
+}
+
+const btnDisconnect = document.getElementById('btnDisconnect');
+if(btnDisconnect) btnDisconnect.addEventListener('click', disconnectDevice);
+
+function disconnectDevice() {
+    if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+        bluetoothDevice.gatt.disconnect();
+    }
+    toggleSheet('settingsSheet');
+}
+
+// ---------------------------------------------------------
+// 2. AUTO-CONEXIÓN Y BLUETOOTH (Web BLE API)
+// ---------------------------------------------------------
+window.addEventListener('DOMContentLoaded', async () => {
+    // Iniciar la escucha por voz inmediatamente
+    updateAlmaStatusText("Di 'Alma, conecta' para empezar.");
+    transcriptBox.innerHTML = "Puedes vincular el dispositivo manualmente o por voz.";
+    btnConnect.style.display = 'block';
+    recognition.start();
+
+    // Intentar reconectar automáticamente en segundo plano
+    try {
+        if ('getDevices' in navigator.bluetooth) {
+            const dispositivosConocidos = await navigator.bluetooth.getDevices();
+            const dispositivoExo = dispositivosConocidos.find(d => d.name === 'EXO_UPN');
+
+            if (dispositivoExo) {
+                updateAlmaStatusText("Dispositivo conocido encontrado. Intentando autoconexión...");
+                transcriptBox.innerHTML = "Intentando reconectar automáticamente...";
+                conectarAlHardware(dispositivoExo);
+            }
+        }
+    } catch (error) {
+        console.error("Error en autoconexión:", error);
+        // No hacer nada, la conexión manual sigue disponible.
+    }
+});
+
+btnConnect.addEventListener('click', async () => {
+    try {
+        transcriptBox.innerHTML = "Abriendo selector de dispositivos Bluetooth...";
+        updateAlmaStatusText("Selecciona tu exoesqueleto...");
+        
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [{ services: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e'] }]
+        });
+        
+        conectarAlHardware(device);
+
+    } catch (error) {
+        transcriptBox.innerHTML = `Error: No se pudo conectar. <br><span style="font-size:0.7rem">${error}</span>`;
+        btnConnect.style.display = 'block';
+    }
+});
+
+async function conectarAlHardware(bluetoothDevice) {
+    try {
+        const server = await bluetoothDevice.gatt.connect();
+        window.bluetoothDevice = bluetoothDevice; // Store globally
+        const service = await server.getPrimaryService("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
+        bleCharacteristicTX = await service.getCharacteristic("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
+        const bleCharacteristicRX = await service.getCharacteristic("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
+        
+        // Escuchar al ESP32 (Feedback del hardware)
+        await bleCharacteristicRX.startNotifications();
+        bleCharacteristicRX.addEventListener('characteristicvaluechanged', handleESP32Feedback);
+
+        // Actualizar UI
+        isConnected = true;
+        statusBadge.textContent = "SISTEMA ACTIVO";
+        statusBadge.classList.add('connected');
+        btnConnect.style.display = 'none';
+        btnStartSession.style.display = 'block'; // Mostrar botón de iniciar sesión
+        almaContainer.classList.remove('listening'); // Asegurarse de que no esté pulsando antes de iniciar
+        transcriptBox.innerHTML = "Exoesqueleto conectado. Listo para iniciar sesión.";
+        updateAlmaStatusText("Conectado. Pulsa 'Iniciar Sesión'.");
+        setAlmaEmotion('normal');
+        
+        speak(`Hola ${userName}. Soy Alma, tu asistente de rehabilitación. Estoy sincronizada. Di 'Alma, inicia sesión' cuando estés listo.`);
+
+        // Si se desconecta físicamente el hardware
+        bluetoothDevice.addEventListener('gattserverdisconnected', () => {
+            isConnected = false;
+            statusBadge.textContent = "DESCONECTADO";
+            statusBadge.classList.remove('connected');
+            almaBody.classList.remove('listening');
+            transcriptBox.innerHTML = "Dispositivo desconectado. Di 'Alma, conecta' para vincular de nuevo.";
+            updateAlmaStatusText("¡Atención! Conexión perdida.");
+            speak("Alerta. Se ha perdido la conexión con el exoesqueleto. Por favor, verifica el dispositivo.");
+            btnConnect.style.display = 'block'; 
+            btnStartSession.style.display = 'none';
+            setAlmaEmotion('alert');
+        });
+
+    } catch (error) {
+        transcriptBox.innerHTML = "Error al conectar con el hardware: Asegúrate de que el brazo esté encendido.";
+        updateAlmaStatusText("Error al conectar hardware.");
+        btnConnect.style.display = 'block';
+        setAlmaEmotion('alert');
+    }
+}
+
+btnStartSession.addEventListener('click', startSession);
+
+function startSession() {
+    btnStartSession.style.display = 'none';
+    almaContainer.classList.add('listening'); // Empezar a pulsar cuando escucha
+    transcriptBox.innerHTML = "Micrófono abierto.<br>Di <b>'Alma'</b> seguido de tu instrucción.";
+    updateAlmaStatusText("Escuchando...");
+    setAlmaEmotion('normal'); // Alma en estado normal mientras escucha
+    speak(`Bienvenido de nuevo, ${userName}. Sesión iniciada. Estoy lista para tus comandos.`);
+    // La reconocimiento ya está en marcha, no es necesario iniciarlo aquí.
+}
+
+// ---------------------------------------------------------
+// 3. RECONOCIMIENTO DE VOZ CONTINUO (Manos libres)
+// ---------------------------------------------------------
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const recognition = new SpeechRecognition();
+recognition.lang = 'es-PE';
+recognition.continuous = true; 
+recognition.interimResults = false;
+
+recognition.onresult = (event) => {
+    const speech = event.results[event.results.length - 1][0].transcript.toLowerCase();
+    setAlmaEmotion('processing'); // Set processing emotion
+    updateAlmaStatusText("Procesando...");
+    // Filtrado de la Palabra de Activación (Wake Word)
+    if (speech.includes(WAKE_WORD)) {
+        transcriptBox.innerHTML = `<strong>Enviando a IA:</strong> "${speech}"`;
+        analizarIntencionLocal(speech.replace(WAKE_WORD, '').trim()); // Eliminar la palabra de activación antes de analizar
+    } else {
+        console.log("Ruido de fondo ignorado:", speech);
+        updateAlmaStatusText("Escuchando..."); // Vuelve a escuchar si no es para Alma
+        setAlmaEmotion('normal'); // Return to normal after ignoring
+    }
+};
+
+recognition.onend = () => {
+    // Siempre reiniciar la escucha para permitir el control total por voz
+    recognition.start();
+};
+
+// ---------------------------------------------------------
+// 4. LÓGICA DE CONTROL Y MONITOREO CLÍNICO
+// ---------------------------------------------------------
+
+function analizarIntencionLocal(texto) {
+    // A. COMANDOS DE NAVEGACIÓN (Manipulación de la Interfaz)
+    if (texto.includes("registro") || texto.includes("progreso") || texto.includes("sesiones")) {
+        speak("¡Claro! Abriendo tu panel de progreso clínico.");
+        abrirPanelControlado('progressSheet');
+        setAlmaEmotion('happy');
+    }
+    else if (texto.includes("ajustes") || texto.includes("configuración") || texto.includes("opciones")) {
+        speak("Accediendo a los ajustes del sistema. Aquí puedes personalizar mi experiencia.");
+        abrirPanelControlado('settingsSheet');
+        setAlmaEmotion('normal'); // Ajustar emoción para ajustes
+    }
+    else if (texto.includes("cierra") || texto.includes("regresa") || texto.includes("atrás") || texto.includes("oculta")) {
+        speak("Entendido, regresando a la pantalla principal.");
+        cerrarTodosLosPaneles();
+        setAlmaEmotion('normal');
+        updateAlmaStatusText("Esperando comandos.");
+    }
+
+    // B. COMANDOS MECATRÓNICOS (Seguridad y Motor)
+    else if (texto.includes("duele") || texto.includes("para") || texto.includes("detente") || texto.includes("emergencia")) {
+        setAlmaEmotion('alert');
+        enviarAlESP32("EMERGENCIA"); // Comando más específico para el ESP32
+        speak("Alerta detectada. Deteniendo motor y liberando tensión.");
+        updateAlmaStatusText("¡ALERTA! Motor detenido.");
+        cerrarTodosLosPaneles(); // Prioridad: ver a Alma en alerta
+    }
+    else if (texto.includes("esfuerzo") || texto.includes("subir") || texto.includes("dobla")) {
+        setAlmaEmotion('happy');
+        enviarAlESP32("FLEXION"); // Comando más específico para el ESP32
+        speak("Iniciando flexión controlada. Mantén la calma.");
+        updateAlmaStatusText("Realizando flexión.");
+        patientData.reps++;
+        actualizarPanelClinico();
+    }
+    
+    // C. COMANDOS DE DESPEDIDA Y PROGRAMACIÓN (Nuevo)
+    else if (texto.includes("terminar") || texto.includes("fin") || texto.includes("hasta mañana") || texto.includes("adiós")) {
+        setAlmaEmotion('normal');
+        enviarAlESP32("REPOSO"); // Comando más específico para el ESP32
+        updateAlmaStatusText("Finalizando sesión.");
+        speak("Excelente trabajo hoy. He guardado tu progreso. Hasta la próxima.");
+        programarProximaSesion();
+        
+        // Desconectar y reiniciar la UI al estado inicial
+        if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+            bluetoothDevice.gatt.disconnect();
+        }
+        return;
+    }
+    // --- COMANDOS DE CONEXIÓN Y SESIÓN (Controlados por voz) ---
+    else if ((texto.includes("conecta") || texto.includes("vincula") || texto.includes("enlaza")) && btnConnect.style.display !== 'none') {
+        speak("Iniciando la búsqueda de dispositivos. Por favor, selecciona el exoesqueleto.");
+        updateAlmaStatusText("Buscando dispositivos...");
+        btnConnect.click();
+        return; // Salir después de ejecutar el comando
+    }
+    else if ((texto.includes("inicia sesión") || texto.includes("empecemos")) && btnStartSession.style.display !== 'none') {
+        startSession();
+        return;
+    }
+    else if ((texto.includes("desvincula") || texto.includes("desconecta")) && isConnected) {
+        speak("Entendido. Desvinculando el dispositivo actual.");
+        updateAlmaStatusText("Desvinculando...");
+        disconnectDevice();
+        return;
+    }
+    else if (texto.length > 0) { // Si no es un comando reconocido
+        speak("Lo siento, no entendí ese comando. ¿Podrías repetirlo?");
+        updateAlmaStatusText("Comando no reconocido.");
+        setAlmaEmotion('alert');
+        setTimeout(() => {
+            setAlmaEmotion('normal');
+            updateAlmaStatusText("Escuchando...");
+        }, 2000);
+    }
+}
+
+// Funciones auxiliares para una UI fluida
+function abrirPanelControlado(id) {
+    cerrarTodosLosPaneles(); // Cerramos otros para evitar conflictos
+    document.getElementById(id).classList.add('open');
+    almaContainer.classList.remove('listening'); // Detener animación de escucha al abrir panel
+    // Efecto visual: la tarjeta principal de Alma se encoge un poco para dar espacio
+    document.getElementById('mainCard').style.transform = "scale(0.85)";
+    document.getElementById('mainCard').style.opacity = "0.5";
+    recognition.stop(); // Detener escucha mientras el panel está abierto
+    updateAlmaStatusText("Panel abierto.");
+}
+
+function cerrarTodosLosPaneles() {
+    document.querySelectorAll('.bottom-sheet').forEach(sheet => {
+        sheet.classList.remove('open');
+    });
+    almaContainer.classList.add('listening'); // Reanudar animación de escucha al cerrar paneles
+    document.getElementById('mainCard').style.transform = "scale(1)";
+    document.getElementById('mainCard').style.opacity = "1";
+    recognition.start(); // Reanudar escucha
+    updateAlmaStatusText("Escuchando...");
+}
+
+function actualizarPanelClinico() {
+    statReps.textContent = patientData.reps;
+    statAngle.textContent = patientData.maxAngle + "°";
+
+    // Feedback más dinámico y personalizado
+    if (patientData.reps === 0) {
+        iaFeedback.innerHTML = "✨ <strong>Sugerencia Clínica:</strong><br>¡Ánimo! Tu primera repetición es el inicio de un gran progreso.";
+    } else if (patientData.reps === 1) {
+        iaFeedback.innerHTML = "✨ <strong>Sugerencia Clínica:</strong><br>¡Excelente! Ya tienes tu primera repetición. Sigue así.";
+    } else if (patientData.reps > 1 && patientData.reps < 5) {
+        iaFeedback.innerHTML = `✨ <strong>Progreso:</strong><br>¡Vas muy bien! Llevas ${patientData.reps} repeticiones. Sigue con ese ritmo.`;
+    }
+    else if (patientData.reps >= 5 && patientData.reps < 10) {
+        iaFeedback.innerHTML = "✨ <strong>Sugerencia Clínica:</strong><br>La articulación está respondiendo muy bien. Recomiendo mantener la rutina actual para no sobrecargar el músculo.";
+    } else if (patientData.reps >= 10) {
+        iaFeedback.innerHTML = "✨ <strong>¡Logro!</strong><br>Has alcanzado 10 o más repeticiones. Tu dedicación es admirable. ¡Sigue así!";
+    }
+}
+
+// ---------------------------------------------------------
+// 5. COMUNICACIÓN HARDWARE Y TTS
+// ---------------------------------------------------------
+async function enviarAlESP32(comando) {
+    if (!bleCharacteristicTX) return;
+    const encoder = new TextEncoder();
+    await bleCharacteristicTX.writeValue(encoder.encode(comando + '\n'));
+}
+
+function handleESP32Feedback(event) {
+    const respuesta = new TextDecoder().decode(event.target.value).trim();
+    console.log("ESP32 dice:", respuesta);
+    if(respuesta === "ALERTA_PARADA") {
+        updateAlmaStatusText("Alerta del exoesqueleto.");
+        setAlmaEmotion('alert');
+        setTimeout(() => {
+            setAlmaEmotion('normal');
+            updateAlmaStatusText("Escuchando...");
+        }, 3000);
+    }
+}
+
+function speak(texto, emotion = 'normal') { // Añadir parámetro de emoción para variar tono
+    const utter = new SpeechSynthesisUtterance(texto);
+    utter.lang = 'es-PE';
+    utter.pitch = 1.05; // Tono ligeramente más agudo para sonar amigable
+    utter.rate = 0.95; // Ligeramente más lento para claridad médica
+    window.speechSynthesis.speak(utter);
+}
+
+// Botón de emergencia manual en ajustes
+function emergencyStopApp() {
+    if(isConnected) {
+        enviarAlESP32("EMERGENCIA");
+        toggleSheet('settingsSheet');
+        setAlmaEmotion('alert');
+        updateAlmaStatusText("Parada de emergencia manual.");
+        speak("Parada de emergencia activada manualmente.");
+    }
+}
+
+// ---------------------------------------------------------
+// 6. SISTEMA PROACTIVO DE ALMA (Notificaciones)
+// ---------------------------------------------------------
+
+// Función para pedir permiso de notificaciones al celular
+async function solicitarPermisosAlma() {
+    if (window.Capacitor && Capacitor.Plugins.LocalNotifications) {
+        const { LocalNotifications } = Capacitor.Plugins;
+        let permStatus = await LocalNotifications.checkPermissions();
+        
+        if (permStatus.display !== 'granted') {
+            await LocalNotifications.requestPermissions();
+        }
+    }
+}
+
+// Función que Alma ejecuta para programar la próxima terapia
+async function programarProximaSesion() {
+    if (window.Capacitor && Capacitor.Plugins.LocalNotifications) {
+        const { LocalNotifications } = Capacitor.Plugins;
+
+        // Programar para dentro de 24 horas (u otra hora específica)
+        // Para probarlo en tu tesis, puedes cambiar '1000 * 60 * 60 * 24' por '1000 * 10' (10 segundos)
+        const fechaProximaSesion = new Date(new Date().getTime() + 1000 * 60 * 60 * 24); 
+
+        await LocalNotifications.schedule({
+            notifications: [
+                {
+                    title: "Hola, soy Alma 🤖",
+                    body: "Es hora de nuestra sesión de rehabilitación. Toca aquí para empezar.",
+                    id: 1,
+                    schedule: { at: fechaProximaSesion },
+                    sound: null, // Usa el sonido por defecto del celular
+                    actionTypeId: "",
+                    extra: null
+                }
+            ]
+        });
+
+        console.log("Alma ha programado la siguiente sesión para:", fechaProximaSesion);
+    }
+}
+
+// Ejecutar la petición de permisos apenas se abre la app
+window.addEventListener('DOMContentLoaded', () => {
+    solicitarPermisosAlma();
+});

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Alma</string>
+    <string name="title_activity_main">Alma</string>
+    <string name="package_name">com.upn.alma</string>
+    <string name="custom_url_scheme">com.upn.alma</string>
+</resources>

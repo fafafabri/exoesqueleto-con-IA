@@ -92,6 +92,14 @@ class NLPEngine {
             TERMINAR: {
                 positivos: ['terminar', 'fin', 'hasta mañana', 'adiós', 'adios', 'gracias', 'listo', 'done', 'finalizar', 'acabar'],
                 negativos: ['no', 'espera', 'más']
+            },
+            VELOCIDAD: {
+                positivos: ['velocidad', 'rápido', 'lento', 'ritmo', 'velocidad del movimiento'],
+                negativos: []
+            },
+            OBJETIVO: {
+                positivos: ['quiero', 'deseo', 'objetivo', 'meta', 'repeticiones', 'flexiones', 'reps', 'veces'],
+                negativos: []
             }
         };
 
@@ -386,11 +394,261 @@ class NLPEngine {
     }
 
     /**
+     * NUEVA: Extraer velocidad (1-10) de un comando
+     * @param {string} texto - "velocidad 5", "ritmo rápido 7", etc.
+     * @returns {number|null} - Número 1-10 o null si no encuentra
+     */
+    extraerVelocidad(texto) {
+        const textoLower = texto.toLowerCase();
+        
+        // Buscar número después de "velocidad"
+        const matchVelocidad = textoLower.match(/velocidad\s+(\d+)/i);
+        if (matchVelocidad) {
+            const velocidad = parseInt(matchVelocidad[1]);
+            if (velocidad >= 1 && velocidad <= 10) return velocidad;
+        }
+
+        // Buscar número en el comando si hay palabra clave de velocidad
+        if (textoLower.includes('velocidad') || textoLower.includes('ritmo') || textoLower.includes('rápido') || textoLower.includes('lento')) {
+            const match = textoLower.match(/(\d+)/);
+            if (match) {
+                const velocidad = parseInt(match[1]);
+                if (velocidad >= 1 && velocidad <= 10) return velocidad;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * NUEVA: Extraer objetivo de repeticiones de un comando
+     * @param {string} texto - "quiero 20 flexiones", "objetivo 15 reps", etc.
+     * @returns {number|null} - Número de reps o null si no encuentra
+     */
+    extraerObjetivo(texto) {
+        const textoLower = texto.toLowerCase();
+        
+        // Palabras clave que indican objetivo
+        const palabrasObjetivo = ['quiero', 'deseo', 'objetivo', 'meta', 'hazme', 'realiza', 'haz'];
+        const tieneObjetivo = palabrasObjetivo.some(palabra => textoLower.includes(palabra));
+        
+        if (!tieneObjetivo) return null;
+
+        // Buscar número seguido de palabras como "flexiones", "repeticiones", "reps", "veces"
+        const matchFlexiones = textoLower.match(/(\d+)\s*(flexiones|repeticiones|reps|veces|rep)/i);
+        if (matchFlexiones) {
+            return parseInt(matchFlexiones[1]);
+        }
+
+        // También buscar: "quiero 20" (sin especificar qué)
+        const matchNumero = textoLower.match(/(?:quiero|deseo|objetivo|hazme)\s+(\d+)/i);
+        if (matchNumero) {
+            return parseInt(matchNumero[1]);
+        }
+
+        return null;
+    }
+
+    /**
+     * NUEVA: Evaluar si hay reporte de dolor/molestia
+     * @param {string} texto - Texto del usuario
+     * @returns {object} - {tieneDolor: boolean, intensidad: number (0-10), ubicacion: string}
+     */
+    evaluarDolor(texto) {
+        const textoLower = texto.toLowerCase();
+        
+        // Detectar palabras de dolor
+        const palabrasDolor = ['duele', 'dolor', 'molesta', 'molestia', 'ardor', 'pinchazos', 'incomodidad', 'malestar'];
+        const tieneDolor = palabrasDolor.some(palabra => textoLower.includes(palabra));
+
+        // Detectar intensidad (escala 1-10)
+        let intensidad = 5; // Medio por defecto
+        const matchIntensidad = textoLower.match(/(\d+)(?:\s*de\s*10|\s*sobre\s*10|\/10)?/);
+        if (matchIntensidad) {
+            intensidad = parseInt(matchIntensidad[1]);
+            if (intensidad > 10) intensidad = 10;
+        }
+
+        // Detectar ubicación
+        const ubicaciones = {
+            'hombro': 'hombro',
+            'codo': 'codo',
+            'muñeca': 'muñeca',
+            'brazo': 'brazo',
+            'articulación': 'articulación',
+            'músculo': 'músculo'
+        };
+
+        let ubicacion = 'general';
+        for (const [palabra, lugar] of Object.entries(ubicaciones)) {
+            if (textoLower.includes(palabra)) {
+                ubicacion = lugar;
+                break;
+            }
+        }
+
+        return {
+            tieneDolor,
+            intensidad: tieneDolor ? intensidad : 0,
+            ubicacion: tieneDolor ? ubicacion : null
+        };
+    }
+
+    /**
      * Limpiar historial
      */
     limpiarHistorial() {
         this.commandHistory = {};
         localStorage.removeItem('commandHistory');
+    }
+
+    /**
+     * NUEVO: Establecer idioma activo
+     * @param {string} idioma - 'es' (español), 'en' (english), 'pt' (portuguese)
+     */
+    establecerIdioma(idioma) {
+        this.idioma = idioma;
+        localStorage.setItem('almaIdioma', idioma);
+        console.log(`🌐 Idioma cambiado a: ${idioma}`);
+        
+        // Entrenar clasificador con ejemplos del nuevo idioma
+        if (idioma === 'en') {
+            this.entrenarEnglish();
+        } else if (idioma === 'pt') {
+            this.entrenarPortuguese();
+        }
+    }
+
+    /**
+     * NUEVO: Entrenar con ejemplos en English
+     */
+    entrenarEnglish() {
+        const ejemplosEn = [
+            { texto: "stop", intencion: "EMERGENCIA", confianza: 0.95 },
+            { texto: "emergency stop", intencion: "EMERGENCIA", confianza: 0.95 },
+            { texto: "it hurts", intencion: "EMERGENCIA", confianza: 0.85 },
+            { texto: "pain in my arm", intencion: "EMERGENCIA", confianza: 0.8 },
+            
+            { texto: "next flex", intencion: "FLEXION", confianza: 0.9 },
+            { texto: "continue", intencion: "FLEXION", confianza: 0.9 },
+            { texto: "do another flex", intencion: "FLEXION", confianza: 0.85 },
+            
+            { texto: "rest", intencion: "REPOSO", confianza: 0.95 },
+            { texto: "pause", intencion: "REPOSO", confianza: 0.9 },
+            { texto: "take a break", intencion: "REPOSO", confianza: 0.85 },
+            
+            { texto: "show progress", intencion: "PROGRESO", confianza: 0.85 },
+            { texto: "how am I doing", intencion: "PROGRESO", confianza: 0.8 },
+            
+            { texto: "speed 5", intencion: "VELOCIDAD", confianza: 0.9 },
+            { texto: "I want 20 reps", intencion: "OBJETIVO", confianza: 0.85 }
+        ];
+        
+        ejemplosEn.forEach(ej => {
+            this.classifier.addExample(this.extraerPalabrasClaveEN(ej.texto), ej.intencion);
+        });
+        this.classifier.train();
+    }
+
+    /**
+     * NUEVO: Entrenar con ejemplos en Portuguese
+     */
+    entrenarPortuguese() {
+        const ejemplosPt = [
+            { texto: "parar", intencion: "EMERGENCIA", confianza: 0.95 },
+            { texto: "emergência", intencion: "EMERGENCIA", confianza: 0.95 },
+            { texto: "dói", intencion: "EMERGENCIA", confianza: 0.85 },
+            { texto: "dor no braço", intencion: "EMERGENCIA", confianza: 0.8 },
+            
+            { texto: "próxima flexão", intencion: "FLEXION", confianza: 0.9 },
+            { texto: "continuar", intencion: "FLEXION", confianza: 0.9 },
+            { texto: "fazer outra flexão", intencion: "FLEXION", confianza: 0.85 },
+            
+            { texto: "descansar", intencion: "REPOSO", confianza: 0.95 },
+            { texto: "pausa", intencion: "REPOSO", confianza: 0.9 },
+            { texto: "tire um tempo", intencion: "REPOSO", confianza: 0.85 },
+            
+            { texto: "mostrar progresso", intencion: "PROGRESO", confianza: 0.85 },
+            { texto: "como estou", intencion: "PROGRESO", confianza: 0.8 },
+            
+            { texto: "velocidade 5", intencion: "VELOCIDAD", confianza: 0.9 },
+            { texto: "quero 20 repetições", intencion: "OBJETIVO", confianza: 0.85 }
+        ];
+        
+        ejemplosPt.forEach(ej => {
+            this.classifier.addExample(this.extraerPalabrasClaveES(ej.texto), ej.intencion);
+        });
+        this.classifier.train();
+    }
+
+    /**
+     * NUEVO: Extraer palabras clave en English
+     */
+    extraerPalabrasClaveEN(texto) {
+        const palabras = texto.toLowerCase().split(/\s+/);
+        return palabras.join(' ');
+    }
+
+    /**
+     * NUEVO: Detectar idioma automático
+     * @param {string} texto
+     * @returns {string} - 'es', 'en', o 'pt'
+     */
+    detectarIdioma(texto) {
+        const textoLower = texto.toLowerCase();
+        
+        // Palabras clave por idioma
+        const patronesES = ['duele', 'velocidad', 'flexión', 'quiero', 'objetivo', 'parada', 'sesión'];
+        const patronesEN = ['speed', 'flex', 'reps', 'hurt', 'pain', 'stop', 'continue'];
+        const patrones_PT = ['dói', 'velocidade', 'flexão', 'quero', 'objetivo', 'parar', 'sessão'];
+        
+        let conteoES = 0, conteoEN = 0, conteo_PT = 0;
+        
+        patronesES.forEach(p => { if (textoLower.includes(p)) conteoES++; });
+        patronesEN.forEach(p => { if (textoLower.includes(p)) conteoEN++; });
+        patrones_PT.forEach(p => { if (textoLower.includes(p)) conteo_PT++; });
+        
+        if (conteoES > conteoEN && conteoES > conteo_PT) return 'es';
+        if (conteoEN > conteo_PT) return 'en';
+        if (conteo_PT > 0) return 'pt';
+        
+        return localStorage.getItem('almaIdioma') || 'es'; // Por defecto español
+    }
+
+    /**
+     * NUEVO: Generar respuesta en diferentes idiomas
+     */
+    generarRespuestaIdioma(intencion, idioma = 'es') {
+        const respuestas = {
+            es: {
+                'EMERGENCIA': ['¡Deteniendo inmediatamente!', 'Parada de emergencia activada'],
+                'FLEXION': ['Vamos con la siguiente flexión', 'Excelente, continuemos'],
+                'REPOSO': ['Descansa un momento', 'Tiempo para recuperarte'],
+                'PROGRESO': ['Aquí está tu progreso', 'Miremos cómo vas'],
+                'VELOCIDAD': ['Velocidad ajustada', 'Control de velocidad activado'],
+                'OBJETIVO': ['Objetivo actualizado', 'Nueva meta establecida']
+            },
+            en: {
+                'EMERGENCIA': ['Stopping immediately!', 'Emergency stop activated'],
+                'FLEXION': ['Let\'s do the next flex', 'Great, let\'s continue'],
+                'REPOSO': ['Take a moment to rest', 'Time to recover'],
+                'PROGRESO': ['Here\'s your progress', 'Let\'s see how you\'re doing'],
+                'VELOCIDAD': ['Speed adjusted', 'Speed control activated'],
+                'OBJETIVO': ['Goal updated', 'New target set']
+            },
+            pt: {
+                'EMERGENCIA': ['Parando imediatamente!', 'Parada de emergência ativada'],
+                'FLEXION': ['Vamos para a próxima flexão', 'Ótimo, continuemos'],
+                'REPOSO': ['Descanse um pouco', 'Hora de se recuperar'],
+                'PROGRESO': ['Aqui está seu progresso', 'Vamos ver como você está indo'],
+                'VELOCIDAD': ['Velocidade ajustada', 'Controle de velocidade ativado'],
+                'OBJETIVO': ['Objetivo atualizado', 'Nova meta estabelecida']
+            }
+        };
+        
+        const opcionesIdioma = respuestas[idioma] || respuestas['es'];
+        const opciones = opcionesIdioma[intencion] || ['Entendido'];
+        return opciones[Math.floor(Math.random() * opciones.length)];
     }
 }
 

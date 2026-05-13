@@ -275,6 +275,29 @@ async function analizarConNLP(texto) {
         }
     }
 
+    // ========== NUEVOS COMANDOS: VELOCIDAD Y OBJETIVO ==========
+    
+    // Detectar si el usuario especifica velocidad (1-10)
+    const velocidad = nlpEngine.extraerVelocidad(texto);
+    if (velocidad) {
+        await procesarComandoVelocidad(velocidad);
+        return; // Salir después de procesar velocidad
+    }
+
+    // Detectar si el usuario especifica objetivo de repeticiones
+    const objetivoReps = nlpEngine.extraerObjetivo(texto);
+    if (objetivoReps) {
+        await procesarComandoObjetivo(objetivoReps);
+        return; // Salir después de procesar objetivo
+    }
+
+    // Detectar si hay reporte de dolor/molestia
+    const evaluacionDolor = nlpEngine.evaluarDolor(texto);
+    if (evaluacionDolor.tieneDolor) {
+        await procesarDolor(evaluacionDolor);
+        return; // Salir después de procesar dolor
+    }
+
     // Manejar la respuesta según la acción
     switch (respuesta.accion) {
         case 'EMERGENCIA':
@@ -440,6 +463,144 @@ function analizarConMetodoSimple(texto) {
     }
 }
 
+// =========================================================================
+// NUEVAS FUNCIONES DE CONTROL DINÁMICO
+// =========================================================================
+
+/**
+ * Procesar comando de velocidad (1-10)
+ */
+async function procesarComandoVelocidad(velocidad) {
+    setAlmaEmotion('processing');
+    updateAlmaStatusText(`Ajustando velocidad a ${velocidad}/10...`);
+    
+    // Guardar velocidad en sesión
+    if (dbManager && sesionActualId) {
+        try {
+            await dbManager.actualizarVelocidadSesion(sesionActualId, velocidad);
+        } catch (error) {
+            console.error('Error al guardar velocidad:', error);
+        }
+    }
+    
+    // Enviar comando ESP32 con velocidad
+    const comando = `VELOCIDAD:${velocidad}`;
+    enviarAlESP32(comando);
+    
+    // Respuesta
+    const mensajes = {
+        1: "Movimiento muy lento. Perfecto para máxima precisión.",
+        3: "Velocidad baja. Control total del movimiento.",
+        5: "Velocidad normal. Balance entre velocidad y control.",
+        7: "Velocidad rápida. Ritmo acelerado.",
+        10: "Velocidad máxima. ¡Mucho cuidado!"
+    };
+    
+    const mensaje = mensajes[velocidad] || `Velocidad ajustada a ${velocidad} de 10.`;
+    speak(mensaje);
+    
+    setAlmaEmotion('happy');
+    updateAlmaStatusText(`Velocidad: ${velocidad}/10`);
+    
+    console.log(`⚡ Velocidad configurada: ${velocidad}/10`);
+}
+
+/**
+ * Procesar comando de objetivo personalizado
+ */
+async function procesarComandoObjetivo(nuevoObjetivo) {
+    if (nuevoObjetivo < 1 || nuevoObjetivo > 100) {
+        speak("Por favor, especifica un número entre 1 y 100 repeticiones.");
+        return;
+    }
+    
+    setAlmaEmotion('happy');
+    updateAlmaStatusText(`Nuevo objetivo: ${nuevoObjetivo} repeticiones`);
+    
+    // Actualizar en sesión
+    if (dbManager && sesionActualId) {
+        try {
+            await dbManager.actualizarObjetivoSesion(sesionActualId, nuevoObjetivo);
+        } catch (error) {
+            console.error('Error al actualizar objetivo:', error);
+        }
+    }
+    
+    // Respuesta personalizada
+    let mensaje = '';
+    if (nuevoObjetivo < 5) {
+        mensaje = `Objetivo ajustado a ${nuevoObjetivo} repeticiones. Vamos paso a paso.`;
+    } else if (nuevoObjetivo < 15) {
+        mensaje = `Excelente meta: ${nuevoObjetivo} repeticiones. ¡Podemos lograrlo!`;
+    } else {
+        mensaje = `¡Objetivo ambicioso! ${nuevoObjetivo} repeticiones. Te voy a ayudar a alcanzarlo.`;
+    }
+    
+    speak(mensaje);
+    console.log(`🎯 Objetivo actualizado: ${nuevoObjetivo} reps`);
+}
+
+/**
+ * Procesar reporte de dolor/molestia
+ */
+async function procesarDolor(evaluacionDolor) {
+    const { intensidad, ubicacion, tieneDolor } = evaluacionDolor;
+    
+    setAlmaEmotion('alert');
+    updateAlmaStatusText(`Alerta de dolor: ${intensidad}/10 en ${ubicacion}`);
+    
+    // Registrar evento de dolor en BD
+    if (dbManager && sesionActualId) {
+        try {
+            await dbManager.registrarDolor(sesionActualId, {
+                repeticionActual: patientData.reps,
+                anguloEnMomento: patientData.maxAngle,
+                intensidad: intensidad,
+                ubicacion: ubicacion,
+                notas: 'Reporte de dolor durante sesión'
+            });
+        } catch (error) {
+            console.error('Error al registrar dolor:', error);
+        }
+    }
+    
+    // Respuesta según intensidad
+    let mensaje = '';
+    let accion = '';
+    
+    if (intensidad >= 8) {
+        // EMERGENCIA - Dolor muy intenso
+        mensaje = `¡ATENCIÓN! Dolor muy intenso detectado. Deteniendo ejercicio inmediatamente por tu seguridad.`;
+        accion = 'EMERGENCIA';
+        enviarAlESP32("EMERGENCIA");
+    } else if (intensidad >= 6) {
+        // Dolor moderado-intenso - Reduce velocidad
+        mensaje = `Dolor moderado detectado en ${ubicacion}. Reduciendo velocidad y dificultad.`;
+        accion = 'REDUCIR_VELOCIDAD';
+        enviarAlESP32("VELOCIDAD:3"); // Velocidad muy baja
+    } else if (intensidad >= 4) {
+        // Dolor leve - Pausa
+        mensaje = `Molestia detectada en ${ubicacion}. Vamos a hacer una pausa. Respira profundo.`;
+        accion = 'PAUSA';
+        enviarAlESP32("REPOSO");
+    } else {
+        // Molestia muy leve
+        mensaje = `Entendido, hay una leve molestia en ${ubicacion}. Continuaremos con cuidado. Dime si empeora.`;
+        accion = 'MONITOREAR';
+    }
+    
+    speak(mensaje);
+    console.log(`📍 Dolor registrado: ${intensidad}/10 - ${ubicacion} - Acción: ${accion}`);
+    
+    // Volver a normalidad después de unos segundos
+    setTimeout(() => {
+        if (intensidad < 8) {
+            setAlmaEmotion('normal');
+            updateAlmaStatusText('Escuchando...');
+        }
+    }, 3000);
+}
+
 // Funciones auxiliares para una UI fluida
 function abrirPanelControlado(id) {
     cerrarTodosLosPaneles(); // Cerramos otros para evitar conflictos
@@ -499,10 +660,29 @@ async function actualizarPanelClinico() {
 // ---------------------------------------------------------
 // 5. COMUNICACIÓN HARDWARE Y TTS
 // ---------------------------------------------------------
+/**
+ * Enviar comando mejorado al ESP32
+ * Comandos disponibles:
+ *   - EMERGENCIA: Detener inmediatamente
+ *   - FLEXION: Iniciar flexión
+ *   - REPOSO: Modo reposo
+ *   - VELOCIDAD:1-10: Ajustar velocidad (1=muy lento, 10=muy rápido)
+ *   - REPS:N: Indicar cantidad de repeticiones
+ */
 async function enviarAlESP32(comando) {
-    if (!bleCharacteristicTX) return;
-    const encoder = new TextEncoder();
-    await bleCharacteristicTX.writeValue(encoder.encode(comando + '\n'));
+    if (!bleCharacteristicTX) {
+        console.warn('⚠️ Característica TX no disponible. No se puede enviar comando.');
+        return;
+    }
+    
+    try {
+        const encoder = new TextEncoder();
+        const datos = comando + '\n';
+        await bleCharacteristicTX.writeValue(encoder.encode(datos));
+        console.log(`📤 ESP32 ← ${comando}`);
+    } catch (error) {
+        console.error('❌ Error al enviar comando ESP32:', error);
+    }
 }
 
 function handleESP32Feedback(event) {

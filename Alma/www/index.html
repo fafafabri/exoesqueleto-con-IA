@@ -284,22 +284,55 @@
 
     <div class="bottom-sheet" id="progressSheet">
         <div class="sheet-header">
-            <h2>Panel Clínico</h2>
+            <h2>📊 Panel de Progreso</h2>
             <button class="close-btn" onclick="toggleSheet('progressSheet')">&times;</button>
         </div>
+        
+        <!-- Estadísticas Rápidas -->
         <div class="stat-grid">
             <div class="stat-card">
-                <div class="stat-label">Terapias Hoy</div>
-                <div class="stat-value" id="statReps">0</div>
+                <div class="stat-label">Sesión Actual</div>
+                <div class="stat-value" id="statReps">0/10</div>
             </div>
             <div class="stat-card">
                 <div class="stat-label">Ángulo Max</div>
                 <div class="stat-value" id="statAngle">0°</div>
             </div>
         </div>
+
+        <!-- Progreso vs Objetivo (Doughnut) -->
+        <div style="margin: 20px 0; padding: 15px; background: white; border-radius: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+            <p style="margin: 0 0 10px 0; font-weight: 600; font-size: 14px; color: #2c3e50;">🎯 Progreso en Sesión</p>
+            <canvas id="chartProgreso" height="80"></canvas>
+            <p style="text-align: center; margin: 10px 0 0 0; font-size: 13px; color: #666; font-weight: 500;" id="textoProgreso">0 de 10 (0%)</p>
+        </div>
+
+        <!-- Velocidad Promedio (Line Chart) -->
+        <div style="margin: 20px 0; padding: 15px; background: white; border-radius: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+            <p style="margin: 0 0 10px 0; font-weight: 600; font-size: 14px; color: #2c3e50;">⚡ Velocidad por Sesión</p>
+            <canvas id="chartVelocidad" height="100"></canvas>
+        </div>
+
+        <!-- Historial de Dolor -->
+        <div style="margin: 20px 0; padding: 15px; background: white; border-radius: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+            <p style="margin: 0 0 10px 0; font-weight: 600; font-size: 14px; color: #2c3e50;">📍 Historial de Dolor</p>
+            <div id="historialdolor">
+                <p style="text-align: center; color: #999; font-size: 13px;">Cargando...</p>
+            </div>
+        </div>
+
+        <!-- Recomendaciones IA (ML Simple) -->
+        <div style="margin: 20px 0; padding: 15px; background: #e8eaf6; border-radius: 15px; border-left: 4px solid #5c6bc0;">
+            <p style="margin: 0 0 10px 0; font-weight: 600; font-size: 14px; color: #3949ab;">💡 Recomendaciones Alma</p>
+            <div id="recomendaciones">
+                <p style="margin: 0; font-size: 13px; color: #666;">Alma te dará recomendaciones personalizadas después de la primera sesión.</p>
+            </div>
+        </div>
+
+        <!-- Feedback IA -->
         <div class="ia-feedback" id="iaFeedback">
-            <strong>Analizando métricas...</strong><br>
-            Alma comenzará a registrar los datos en cuanto inicies la sesión de rehabilitación.
+            <strong>✅ Panel Clínico Listo</strong><br>
+            Los datos se registran automáticamente durante tu sesión de rehabilitación.
         </div>
     </div>
 
@@ -318,6 +351,9 @@
 
     <script src="nlp.js"></script>
     <script src="database.js"></script>
+    <script src="dashboard.js"></script>
     <script src="app.js"></script>
+    <!-- Chart.js para gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </body>
 </html>

@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Comandos de Voz - Alma</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            padding: 30px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .test-card {
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            background: #f9f9f9;
+            transition: all 0.3s ease;
+        }
+        .test-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        }
+        .test-card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .test-card h3::before {
+            content: '🎯';
+            font-size: 20px;
+        }
+        .test-card.velocidad h3::before { content: '⚡'; }
+        .test-card.objetivo h3::before { content: '🎪'; }
+        .test-card.dolor h3::before { content: '📍'; }
+        
+        .test-input {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            border-radius: 5px;
+            font-size: 13px;
+            color: #333;
+            font-family: 'Courier New', monospace;
+            display: none;
+        }
+        .result.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .result.success {
+            background: #e8f5e9;
+            border-left-color: #4caf50;
+        }
+        .result.warning {
+            background: #fff3e0;
+            border-left-color: #ff9800;
+        }
+        .result.error {
+            background: #ffebee;
+            border-left-color: #f44336;
+        }
+        .section {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid #eee;
+        }
+        .section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+        .examples {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .example-btn {
+            background: #e0e7ff;
+            color: #667eea;
+            border: 1px solid #667eea;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }
+        .example-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+        .logs {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .log-entry.success { color: #00ff00; }
+        .log-entry.warning { color: #ffff00; }
+        .log-entry.error { color: #ff5555; }
+        .status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        .status.ok {
+            background: #4caf50;
+            color: white;
+        }
+        .status.pending {
+            background: #ff9800;
+            color: white;
+        }
+        .status.error {
+            background: #f44336;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test de Comandos de Voz - Alma</h1>
+        <p class="subtitle">Prueba los tres nuevos comandos dinámicos: Velocidad, Objetivo y Dolor</p>
+
+        <!-- TESTS INTERACTIVOS -->
+        <div class="grid">
+            <!-- Test Velocidad -->
+            <div class="test-card velocidad">
+                <h3>VELOCIDAD (1-10)</h3>
+                <div class="test-input">
+                    <label>Texto de entrada:</label>
+                    <input type="text" id="velInput" placeholder="Ej: velocidad 7" value="velocidad 5">
+                </div>
+                <button onclick="testVelocidad()">Probar Extracción</button>
+                <div id="velResult" class="result"></div>
+                <p style="font-size: 12px; margin-top: 10px; color: #666;">
+                    <strong>Ejemplos:</strong>
+                </p>
+                <div class="examples">
+                    <button class="example-btn" onclick="setAndTest('velInput', 'velocidad 3', testVelocidad)">velocidad 3</button>
+                    <button class="example-btn" onclick="setAndTest('velInput', 'ritmo 7', testVelocidad)">ritmo 7</button>
+                    <button class="example-btn" onclick="setAndTest('velInput', 'rápido 9', testVelocidad)">rápido 9</button>
+                    <button class="example-btn" onclick="setAndTest('velInput', 'lento 1', testVelocidad)">lento 1</button>
+                </div>
+            </div>
+
+            <!-- Test Objetivo -->
+            <div class="test-card objetivo">
+                <h3>OBJETIVO (Reps)</h3>
+                <div class="test-input">
+                    <label>Texto de entrada:</label>
+                    <input type="text" id="objInput" placeholder="Ej: quiero 20 flexiones" value="quiero 15 flexiones">
+                </div>
+                <button onclick="testObjetivo()">Probar Extracción</button>
+                <div id="objResult" class="result"></div>
+                <p style="font-size: 12px; margin-top: 10px; color: #666;">
+                    <strong>Ejemplos:</strong>
+                </p>
+                <div class="examples">
+                    <button class="example-btn" onclick="setAndTest('objInput', 'quiero 20 flexiones', testObjetivo)">quiero 20</button>
+                    <button class="example-btn" onclick="setAndTest('objInput', 'objetivo 25 reps', testObjetivo)">objetivo 25</button>
+                    <button class="example-btn" onclick="setAndTest('objInput', 'meta 10 repeticiones', testObjetivo)">meta 10</button>
+                    <button class="example-btn" onclick="setAndTest('objInput', 'hazme 30 reps', testObjetivo)">hazme 30</button>
+                </div>
+            </div>
+
+            <!-- Test Dolor -->
+            <div class="test-card dolor">
+                <h3>DOLOR/MOLESTIA</h3>
+                <div class="test-input">
+                    <label>Texto de entrada:</label>
+                    <input type="text" id="dolInput" placeholder="Ej: duele el codo, 6" value="duele el brazo">
+                </div>
+                <button onclick="testDolor()">Probar Detección</button>
+                <div id="dolResult" class="result"></div>
+                <p style="font-size: 12px; margin-top: 10px; color: #666;">
+                    <strong>Ejemplos:</strong>
+                </p>
+                <div class="examples">
+                    <button class="example-btn" onclick="setAndTest('dolInput', 'me duele el codo 5', testDolor)">codo 5</button>
+                    <button class="example-btn" onclick="setAndTest('dolInput', 'dolor en hombro 8', testDolor)">hombro 8</button>
+                    <button class="example-btn" onclick="setAndTest('dolInput', 'molestia articulación 3', testDolor)">articulación 3</button>
+                    <button class="example-btn" onclick="setAndTest('dolInput', 'no duele', testDolor)">no duele</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN DE ANÁLISIS COMPLETO -->
+        <div class="section">
+            <h2>📊 Análisis Completo de Intención</h2>
+            <div class="test-input">
+                <label>Texto a analizar:</label>
+                <textarea id="fullInput" rows="3" placeholder="Escribe un comando de voz completo...">Alma, velocidad 7 y quiero 20 flexiones, pero me duele un poco el codo</textarea>
+            </div>
+            <button onclick="testCompleto()">Analizar Completo</button>
+            <div id="fullResult" class="result"></div>
+        </div>
+
+        <!-- LOG DE EVENTOS -->
+        <div class="section">
+            <h2>📋 Log de Eventos</h2>
+            <button onclick="clearLogs()" style="background: #999; margin-bottom: 10px;">Limpiar Log</button>
+            <div class="logs" id="logs">
+                <div class="log-entry success">✅ Consola iniciada</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="nlp.js"></script>
+    <script>
+        // Variables globales
+        let nlpEngine = null;
+        let logEntries = [];
+
+        // Inicializar
+        window.addEventListener('DOMContentLoaded', () => {
+            if (typeof NLPEngine !== 'undefined') {
+                nlpEngine = new NLPEngine();
+                addLog('✅ NLPEngine iniciado correctamente', 'success');
+            } else {
+                addLog('❌ Error: NLPEngine no encontrado', 'error');
+            }
+        });
+
+        // Funciones de utilidad
+        function addLog(mensaje, tipo = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = `[${timestamp}] ${mensaje}`;
+            logEntries.unshift(entry);
+            if (logEntries.length > 50) logEntries.pop(); // Mantener últimos 50
+            
+            const logsDiv = document.getElementById('logs');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${tipo}`;
+            logEntry.textContent = entry;
+            logsDiv.insertBefore(logEntry, logsDiv.firstChild);
+        }
+
+        function clearLogs() {
+            logEntries = [];
+            document.getElementById('logs').innerHTML = '';
+            addLog('✅ Log limpiado', 'success');
+        }
+
+        function setAndTest(inputId, valor, testFunc) {
+            document.getElementById(inputId).value = valor;
+            testFunc();
+        }
+
+        function showResult(elementId, resultado, tipo = 'success') {
+            const elem = document.getElementById(elementId);
+            elem.innerHTML = '';
+            
+            if (typeof resultado === 'object') {
+                elem.innerHTML = `<pre>${JSON.stringify(resultado, null, 2)}</pre>`;
+            } else {
+                elem.innerHTML = `<strong>Resultado:</strong> ${resultado}`;
+            }
+            
+            elem.className = `result show ${tipo}`;
+        }
+
+        // TEST 1: VELOCIDAD
+        function testVelocidad() {
+            if (!nlpEngine) {
+                addLog('❌ NLPEngine no disponible', 'error');
+                return;
+            }
+
+            const texto = document.getElementById('velInput').value;
+            const velocidad = nlpEngine.extraerVelocidad(texto);
+            
+            if (velocidad) {
+                const resultado = {
+                    exitoso: true,
+                    velocidad: velocidad,
+                    comando_esp32: `VELOCIDAD:${velocidad}`,
+                    validacion: velocidad >= 1 && velocidad <= 10 ? '✅ Válido' : '❌ Fuera de rango'
+                };
+                addLog(`⚡ Velocidad detectada: ${velocidad}/10 | Texto: "${texto}"`, 'success');
+                showResult('velResult', resultado, 'success');
+            } else {
+                const resultado = {
+                    exitoso: false,
+                    velocidad: null,
+                    error: 'No se encontró velocidad válida en el texto'
+                };
+                addLog(`⚠️ No se detectó velocidad | Texto: "${texto}"`, 'warning');
+                showResult('velResult', resultado, 'warning');
+            }
+        }
+
+        // TEST 2: OBJETIVO
+        function testObjetivo() {
+            if (!nlpEngine) {
+                addLog('❌ NLPEngine no disponible', 'error');
+                return;
+            }
+
+            const texto = document.getElementById('objInput').value;
+            const objetivo = nlpEngine.extraerObjetivo(texto);
+            
+            if (objetivo) {
+                const resultado = {
+                    exitoso: true,
+                    objetivo: objetivo,
+                    repeticiones: objetivo,
+                    validacion: objetivo >= 1 && objetivo <= 100 ? '✅ Válido' : '⚠️ Fuera de rango (1-100)',
+                    display_panel: `0 de ${objetivo} repeticiones`
+                };
+                addLog(`🎯 Objetivo detectado: ${objetivo} reps | Texto: "${texto}"`, 'success');
+                showResult('objResult', resultado, 'success');
+            } else {
+                const resultado = {
+                    exitoso: false,
+                    objetivo: null,
+                    error: 'No se encontró objetivo válido en el texto'
+                };
+                addLog(`⚠️ No se detectó objetivo | Texto: "${texto}"`, 'warning');
+                showResult('objResult', resultado, 'warning');
+            }
+        }
+
+        // TEST 3: DOLOR
+        function testDolor() {
+            if (!nlpEngine) {
+                addLog('❌ NLPEngine no disponible', 'error');
+                return;
+            }
+
+            const texto = document.getElementById('dolInput').value;
+            const evaluacion = nlpEngine.evaluarDolor(texto);
+            
+            if (evaluacion.tieneDolor) {
+                let accion = 'MONITOREAR';
+                if (evaluacion.intensidad >= 8) accion = 'EMERGENCIA';
+                else if (evaluacion.intensidad >= 6) accion = 'VELOCIDAD:3';
+                else if (evaluacion.intensidad >= 4) accion = 'REPOSO';
+
+                const resultado = {
+                    exitoso: true,
+                    tieneDolor: evaluacion.tieneDolor,
+                    intensidad: `${evaluacion.intensidad}/10`,
+                    ubicacion: evaluacion.ubicacion,
+                    accion_esp32: accion,
+                    respuesta: generarRespuestaDolor(evaluacion.intensidad, evaluacion.ubicacion)
+                };
+                addLog(`📍 Dolor detectado: ${evaluacion.intensidad}/10 en ${evaluacion.ubicacion} | Acción: ${accion}`, 'warning');
+                showResult('dolResult', resultado, 'warning');
+            } else {
+                const resultado = {
+                    exitoso: false,
+                    tieneDolor: false,
+                    intensidad: 0,
+                    ubicacion: null,
+                    mensaje: 'Sin dolor/molestia detectada'
+                };
+                addLog(`✅ Sin dolor detectado | Texto: "${texto}"`, 'success');
+                showResult('dolResult', resultado, 'success');
+            }
+        }
+
+        function generarRespuestaDolor(intensidad, ubicacion) {
+            if (intensidad >= 8) {
+                return "¡ATENCIÓN! Deteniendo ejercicio inmediatamente por tu seguridad.";
+            } else if (intensidad >= 6) {
+                return `Dolor moderado en ${ubicacion}. Reduciendo velocidad y dificultad.`;
+            } else if (intensidad >= 4) {
+                return `Molestia en ${ubicacion}. Vamos a hacer una pausa. Respira profundo.`;
+            } else {
+                return `Leve molestia en ${ubicacion}. Continuaremos con cuidado.`;
+            }
+        }
+
+        // TEST COMPLETO
+        function testCompleto() {
+            if (!nlpEngine) {
+                addLog('❌ NLPEngine no disponible', 'error');
+                return;
+            }
+
+            const texto = document.getElementById('fullInput').value;
+            
+            const velocidad = nlpEngine.extraerVelocidad(texto);
+            const objetivo = nlpEngine.extraerObjetivo(texto);
+            const dolor = nlpEngine.evaluarDolor(texto);
+            const intencion = nlpEngine.analizarIntencion(texto);
+            const sentimiento = nlpEngine.analizarSentimiento(texto);
+
+            const resultado = {
+                texto_original: texto,
+                intencion: {
+                    tipo: intencion.intencion,
+                    confianza: `${(intencion.confianza * 100).toFixed(0)}%`
+                },
+                parametros_detectados: {
+                    velocidad: velocidad || 'No especificada',
+                    objetivo_reps: objetivo || 'No especificado',
+                    dolor: {
+                        presente: dolor.tieneDolor,
+                        intensidad: dolor.tieneDolor ? `${dolor.intensidad}/10` : 'N/A',
+                        ubicacion: dolor.ubicacion || 'N/A'
+                    }
+                },
+                sentimiento: sentimiento,
+                respuesta_alma: nlpEngine.generarRespuesta(intencion, objetivo || 0)
+            };
+
+            addLog(`📊 Análisis completo ejecutado | Intención: ${intencion.intencion}`, 'success');
+            showResult('fullResult', resultado, 'success');
+        }
+    </script>
+</body>
+</html>

@@ -170,7 +170,15 @@ class DatabaseManager {
             estado: 'activa', // activa, completada, pausada, cancelada
             notas: datos.notas || '',
             feedback: [],
-            interacciones: [] // Almacenar IDs de interacciones NLP
+            interacciones: [], // Almacenar IDs de interacciones NLP
+            
+            // NUEVOS - Velocidad y Objetivo
+            velocidadPromed: 0,  // Velocidad promedio (1-10) utilizada
+            velocidadMin: 10,    // Velocidad mínima
+            velocidadMax: 1,     // Velocidad máxima
+            objetivoReps: datos.objetivoReps || 10,  // Reps objetivo (puede cambiar)
+            eventosDolor: [],    // Array de {timestamp, anguloEnMomento, intensidad, ubicacion}
+            velocidadesUsadas: [] // Array histórico de velocidades por rep
         };
 
         return new Promise((resolve, reject) => {
@@ -180,7 +188,7 @@ class DatabaseManager {
 
             request.onsuccess = () => {
                 const sesionId = request.result;
-                console.log(`✅ Sesión ${sesionId} creada`);
+                console.log(`✅ Sesión ${sesionId} creada (Objetivo: ${sesion.objetivoReps} reps)`);
                 resolve({ ...sesion, id: sesionId });
             };
 
@@ -189,7 +197,112 @@ class DatabaseManager {
     }
 
     /**
-     * Guardar repetición durante la sesión
+     * NUEVA: Actualizar objetivo de repeticiones durante la sesión
+     */
+    async actualizarObjetivoSesion(sesionId, nuevoObjetivo) {
+        if (!this.ready) await this.inicializar();
+        
+        return new Promise(async (resolve, reject) => {
+            try {
+                const sesion = await this.obtenerSesion(sesionId);
+                sesion.objetivoReps = nuevoObjetivo;
+                
+                const transaction = this.db.transaction(['sesiones'], 'readwrite');
+                const store = transaction.objectStore('sesiones');
+                const request = store.put(sesion);
+
+                request.onsuccess = () => {
+                    console.log(`✅ Objetivo actualizado: ${nuevoObjetivo} repeticiones`);
+                    resolve(nuevoObjetivo);
+                };
+
+                request.onerror = () => reject(request.error);
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    /**
+     * NUEVA: Registrar evento de dolor durante la sesión
+     */
+    async registrarDolor(sesionId, datos) {
+        if (!this.ready) await this.inicializar();
+        
+        return new Promise(async (resolve, reject) => {
+            try {
+                const sesion = await this.obtenerSesion(sesionId);
+                
+                const eventoDolor = {
+                    timestamp: new Date().getTime(),
+                    repeticionActual: datos.repeticionActual || 0,
+                    anguloEnMomento: datos.anguloEnMomento || 0,
+                    intensidad: datos.intensidad || 5, // 1-10
+                    ubicacion: datos.ubicacion || 'general',
+                    notas: datos.notas || ''
+                };
+
+                sesion.eventosDolor.push(eventoDolor);
+                
+                const transaction = this.db.transaction(['sesiones'], 'readwrite');
+                const store = transaction.objectStore('sesiones');
+                const request = store.put(sesion);
+
+                request.onsuccess = () => {
+                    console.log(`📍 Evento de dolor registrado: Intensidad ${eventoDolor.intensidad}/10 en ${eventoDolor.ubicacion}`);
+                    resolve(eventoDolor);
+                };
+
+                request.onerror = () => reject(request.error);
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    /**
+     * NUEVA: Actualizar velocidad de repetición
+     */
+    async actualizarVelocidadSesion(sesionId, velocidad) {
+        if (!this.ready) await this.inicializar();
+        
+        return new Promise(async (resolve, reject) => {
+            try {
+                const sesion = await this.obtenerSesion(sesionId);
+                
+                // Actualizar min/max
+                if (velocidad < sesion.velocidadMin) sesion.velocidadMin = velocidad;
+                if (velocidad > sesion.velocidadMax) sesion.velocidadMax = velocidad;
+                
+                // Agregar al histórico
+                sesion.velocidadesUsadas.push(velocidad);
+                
+                // Calcular promedio
+                sesion.velocidadPromed = Math.round(
+                    sesion.velocidadesUsadas.reduce((a, b) => a + b, 0) / sesion.velocidadesUsadas.length
+                );
+                
+                const transaction = this.db.transaction(['sesiones'], 'readwrite');
+                const store = transaction.objectStore('sesiones');
+                const request = store.put(sesion);
+
+                request.onsuccess = () => {
+                    console.log(`⚡ Velocidad actualizada: ${velocidad}/10 (Promedio: ${sesion.velocidadPromed}/10)`);
+                    resolve({
+                        velocidadActual: velocidad,
+                        velocidadPromed: sesion.velocidadPromed
+                    });
+                };
+
+                request.onerror = () => reject(request.error);
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    /**
+     * Guardar repetición durante la sesión (MEJORADO)
      */
     async guardarRepeticion(sesionId, datos) {
         if (!this.ready) await this.inicializar();
@@ -202,7 +315,10 @@ class DatabaseManager {
             maxAngleAlcanzado: datos.maxAngleAlcanzado || 0,
             duracion: datos.duracion || 0, // en segundos
             esfuerzo: datos.esfuerzo || 'normal', // bajo, normal, alto
-            notas: datos.notas || ''
+            velocidad: datos.velocidad || 5, // NUEVO: velocidad 1-10
+            notas: datos.notas || '',
+            conDolor: datos.conDolor || false, // NUEVO: ¿hubo dolor?
+            intensidadDolor: datos.intensidadDolor || 0 // NUEVO: 1-10
         };
 
         return new Promise((resolve, reject) => {
@@ -211,7 +327,7 @@ class DatabaseManager {
             const request = store.add(repeticion);
 
             request.onsuccess = () => {
-                console.log(`✅ Repetición #${repeticion.numero} guardada`);
+                console.log(`✅ Repetición #${repeticion.numero} guardada (Velocidad: ${repeticion.velocidad}/10)`);
                 resolve({ ...repeticion, id: request.result });
             };
 

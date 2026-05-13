@@ -587,6 +587,164 @@ class DatabaseManager {
     }
 
     /**
+     * NUEVA: Obtener predicción de riesgo de dolor basada en historial
+     */
+    async predecirRiesgoDolor(pacienteId, sesionActual) {
+        if (!this.ready) await this.inicializar();
+        
+        try {
+            const sesiones = await this.obtenerSesionesPaciente(pacienteId);
+            
+            if (sesiones.length < 2) {
+                return { riesgo: 'bajo', confianza: 0, razon: 'Poco historial' };
+            }
+
+            // Analizar últimas 5 sesiones
+            const ultimasSesiones = sesiones.slice(-5);
+            let eventosDolor = [];
+            let velocidadesAltas = 0;
+
+            ultimasSesiones.forEach(s => {
+                if (s.eventosDolor && s.eventosDolor.length > 0) {
+                    eventosDolor.push(...s.eventosDolor);
+                }
+                if (s.velocidadPromed && s.velocidadPromed >= 7) {
+                    velocidadesAltas++;
+                }
+            });
+
+            // Calcular riesgo
+            let riesgo = 'bajo';
+            let confianza = 0;
+            let razon = 'Historial sin incidentes';
+
+            if (eventosDolor.length > 0) {
+                const intensidadPromedio = eventosDolor.reduce((a, b) => a + b.intensidad, 0) / eventosDolor.length;
+                
+                if (intensidadPromedio >= 7) {
+                    riesgo = 'alto';
+                    confianza = Math.min(intensidadPromedio / 10, 1);
+                    razon = `Historial de dolor intenso (${intensidadPromedio.toFixed(1)}/10)`;
+                } else if (intensidadPromedio >= 4) {
+                    riesgo = 'medio';
+                    confianza = intensidadPromedio / 10;
+                    razon = `Historial de dolor moderado (${intensidadPromedio.toFixed(1)}/10)`;
+                }
+            }
+
+            if (velocidadesAltas >= 3) {
+                confianza = Math.min(confianza + 0.2, 1);
+                if (riesgo === 'bajo') riesgo = 'medio';
+            }
+
+            return { riesgo, confianza, razon };
+        } catch (error) {
+            console.error('Error al predecir riesgo:', error);
+            return { riesgo: 'desconocido', confianza: 0, razon: 'Error en predicción' };
+        }
+    }
+
+    /**
+     * NUEVA: Recomendar velocidad adaptativa
+     */
+    async recomendarVelocidad(pacienteId) {
+        if (!this.ready) await this.inicializar();
+        
+        try {
+            const sesiones = await this.obtenerSesionesPaciente(pacienteId);
+            
+            if (sesiones.length === 0) {
+                return { velocidadSugerida: 5, razon: 'Comenzando con velocidad neutral' };
+            }
+
+            const ultimaSesion = sesiones[sesiones.length - 1];
+            const sesionAnterior = sesiones[sesiones.length - 2];
+
+            let velocidadSugerida = 5; // Por defecto
+            let razon = '';
+
+            // Si tuvo dolor, reducir velocidad
+            if (ultimaSesion.eventosDolor && ultimaSesion.eventosDolor.length > 0) {
+                const maxDolor = Math.max(...ultimaSesion.eventosDolor.map(e => e.intensidad));
+                if (maxDolor >= 6) {
+                    velocidadSugerida = Math.max(1, (ultimaSesion.velocidadPromed || 5) - 2);
+                    razon = 'Reducida por dolor detectado';
+                }
+            }
+
+            // Si completó objetivo fácil, aumentar
+            else if (ultimaSesion.repeticiones >= ultimaSesion.objetivoReps) {
+                velocidadSugerida = Math.min(10, (ultimaSesion.velocidadPromed || 5) + 1);
+                razon = 'Aumentada por buen desempeño';
+            }
+
+            // Si fue muy lenta, aumentar gradualmente
+            else if (ultimaSesion.velocidadPromed && ultimaSesion.velocidadPromed <= 3) {
+                velocidadSugerida = Math.min(5, (ultimaSesion.velocidadPromed || 3) + 1);
+                razon = 'Aumento gradual para progreso';
+            }
+
+            return { velocidadSugerida: Math.round(velocidadSugerida), razon };
+        } catch (error) {
+            console.error('Error al recomendar velocidad:', error);
+            return { velocidadSugerida: 5, razon: 'Error en recomendación' };
+        }
+    }
+
+    /**
+     * NUEVA: Generar plan terapéutico sugerido
+     */
+    async sugerirPlanTerapeutico(pacienteId) {
+        if (!this.ready) await this.inicializar();
+        
+        try {
+            const stats = await this.obtenerEstadisticasPaciente(pacienteId, 30);
+            const riesgo = await this.predecirRiesgoDolor(pacienteId);
+            const velocidad = await this.recomendarVelocidad(pacienteId);
+
+            let plan = {
+                fecha: new Date().toISOString(),
+                resumen: '',
+                recomendaciones: [],
+                proximaSesion: {}
+            };
+
+            // Analizar progreso
+            if (stats.sesiones.length < 3) {
+                plan.resumen = 'Fase inicial de adaptación';
+                plan.recomendaciones.push('Aumentar consistencia a 3-4 sesiones por semana');
+                plan.proximaSesion.objetivo = 10;
+                plan.proximaSesion.velocidad = 5;
+            } else {
+                const tendencia = stats.sesiones[stats.sesiones.length - 1].repeticiones - stats.sesiones[0].repeticiones;
+                
+                if (tendencia > 0) {
+                    plan.resumen = 'Progreso positivo detectado';
+                    plan.recomendaciones.push('Mantén el ritmo de sesiones');
+                    plan.recomendaciones.push('Considera aumentar objetivo');
+                } else {
+                    plan.resumen = 'Necesita enfoque en consistencia';
+                    plan.recomendaciones.push('Reduce velocidad a nivel cómodo');
+                    plan.recomendaciones.push('Aumenta frecuencia de sesiones');
+                }
+            }
+
+            // Considerar riesgo de dolor
+            if (riesgo.riesgo === 'alto') {
+                plan.recomendaciones.push(`⚠️ Alto riesgo de dolor: ${riesgo.razon}`);
+            }
+
+            plan.proximaSesion.velocidad = velocidad.velocidadSugerida;
+            plan.proximaSesion.razon = velocidad.razon;
+
+            return plan;
+        } catch (error) {
+            console.error('Error al sugerir plan:', error);
+            return null;
+        }
+    }
+
+    /**
      * Limpiar todas las sesiones (para testing)
      */
     async limpiarBaseDatos() {

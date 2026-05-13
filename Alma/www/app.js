@@ -195,6 +195,11 @@ async function startSession() {
             });
             sesionActualId = sesion.id;
             console.log(`📊 Nueva sesión creada: ID ${sesionActualId}`);
+            
+            // Sincronizar sesión con servidor
+            if (syncManager) {
+                await syncManager.guardarSesion(sesion, pacienteId);
+            }
         } catch (error) {
             console.error('Error al crear sesión:', error);
         }
@@ -350,6 +355,34 @@ async function analizarConNLP(texto) {
                         feedback: [respuesta.mensaje]
                     });
                     console.log(`✅ Sesión ${sesionActualId} finalizada en BD`);
+                    
+                    // Sincronizar con servidor
+                    if (syncManager) {
+                        await syncManager.finalizarSesion(sesionActualId, {
+                            duracion: patientData.reps,
+                            timestamp: new Date().toISOString()
+                        });
+                        
+                        // Enviar alerta si hay riesgo alto
+                        const riesgo = await dbManager.predecirRiesgoDolor(pacienteId);
+                        if (riesgo.riesgo === 'alto') {
+                            await syncManager.enviarAlerta(pacienteId, 'riesgo_alto_dolor', 
+                                `Riesgo alto de dolor detectado: ${riesgo.razon}`);
+                        }
+                    }
+                    
+                    // Mostrar recomendaciones para próxima sesión (ML)
+                    const plan = await dbManager.sugerirPlanTerapeutico(pacienteId);
+                    if (plan) {
+                        console.log(`📋 Plan sugerido: ${plan.resumen}`);
+                        speak(`Tu próxima sesión: ${plan.proximaSesion.razon}`);
+                    }
+                    
+                    // Actualizar gráficos finales
+                    if (dashboardManager) {
+                        await dashboardManager.actualizarDashboard();
+                    }
+                    
                     sesionActualId = null;
                 } catch (error) {
                     console.error('Error al finalizar sesión:', error);
@@ -552,13 +585,30 @@ async function procesarDolor(evaluacionDolor) {
     // Registrar evento de dolor en BD
     if (dbManager && sesionActualId) {
         try {
-            await dbManager.registrarDolor(sesionActualId, {
+            const eventoDocencia = {
                 repeticionActual: patientData.reps,
                 anguloEnMomento: patientData.maxAngle,
                 intensidad: intensidad,
                 ubicacion: ubicacion,
                 notas: 'Reporte de dolor durante sesión'
-            });
+            };
+            
+            await dbManager.registrarDolor(sesionActualId, eventoDocencia);
+            
+            // Sincronizar evento de dolor con servidor
+            if (syncManager) {
+                await syncManager.registrarDolor(sesionActualId, eventoDocencia);
+            }
+            
+            // Predecir riesgo futuro basado en este evento
+            const riesgo = await dbManager.predecirRiesgoDolor(pacienteId);
+            console.log(`⚠️ Riesgo predicho: ${riesgo.riesgo} (${(riesgo.confianza * 100).toFixed(0)}%) - ${riesgo.razon}`);
+            
+            // Enviar alerta inmediata si es grave
+            if (intensidad >= 7 && syncManager) {
+                await syncManager.enviarAlerta(pacienteId, 'dolor_intenso', 
+                    `Paciente reporta dolor ${intensidad}/10 en ${ubicacion}`);
+            }
         } catch (error) {
             console.error('Error al registrar dolor:', error);
         }
@@ -637,6 +687,15 @@ async function actualizarPanelClinico() {
                 maxAngleAlcanzado: patientData.maxAngle,
                 esfuerzo: 'normal'
             });
+            
+            // Actualizar gráficos en tiempo real
+            if (dashboardManager) {
+                dashboardManager.actualizarEstadisticasSimples(
+                    patientData.reps,
+                    patientData.maxAngle,
+                    patientData.objetivo || 10
+                );
+            }
         } catch (error) {
             console.error('Error al guardar repetición:', error);
         }
@@ -654,6 +713,24 @@ async function actualizarPanelClinico() {
         iaFeedback.innerHTML = "✨ <strong>Sugerencia Clínica:</strong><br>La articulación está respondiendo muy bien. Recomiendo mantener la rutina actual para no sobrecargar el músculo.";
     } else if (patientData.reps >= 10) {
         iaFeedback.innerHTML = "✨ <strong>¡Logro!</strong><br>Has alcanzado 10 o más repeticiones. Tu dedicación es admirable. ¡Sigue así!";
+    }
+}
+
+/**
+ * Actualizar panel de progreso con recomendaciones ML
+ */
+async function actualizarPanelProgressoAvanzado() {
+    if (!dbManager || !sesionActualId) return;
+    
+    try {
+        // Mostrar recomendaciones personalizadas
+        const sesiones = await dbManager.obtenerSesionesPaciente(pacienteId);
+        if (dashboardManager && sesiones.length > 0) {
+            await dashboardManager.mostrarRecomendaciones(sesiones);
+            await dashboardManager.actualizarDashboard();
+        }
+    } catch (error) {
+        console.error('Error al actualizar panel avanzado:', error);
     }
 }
 

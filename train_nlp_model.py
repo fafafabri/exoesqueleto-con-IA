@@ -20,6 +20,7 @@ AUGMENTED_DATASET_PATH = ROOT / "dataset_clinico_augmented.csv"
 MODEL_DIR = ROOT / "Alma" / "www" / "model"
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_H5_PATH = MODEL_DIR / "alma_nlp_model.h5"
+MODEL_WEIGHTS_PATH = MODEL_DIR / "model_weights.json"
 VECTORIZER_PATH = MODEL_DIR / "vectorizer_vocab.json"
 LABEL_MAP_PATH = MODEL_DIR / "label_map.json"
 TRAINING_INFO_PATH = MODEL_DIR / "training_info.json"
@@ -140,6 +141,26 @@ def convert_model_to_tfjs(keras_model_path, tfjs_output_dir):
         print('No se pudo convertir el modelo a TensorFlow.js (opcional):', exc)
 
 
+def export_model_weights_json(model, output_path):
+    layers = []
+    for layer in model.layers:
+        weights = layer.get_weights()
+        if len(weights) == 2:
+            w, b = weights
+            layers.append({
+                'weights': w.tolist(),
+                'biases': b.tolist(),
+                'activation': layer.activation.__name__ if hasattr(layer, 'activation') else 'linear'
+            })
+
+    data = {
+        'layers': layers
+    }
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
 def main():
     print('Cargando dataset clinico base...')
     df = build_augmented_dataset(DATASET_PATH)
@@ -196,9 +217,10 @@ def main():
         'val_size': int(X_val.shape[0])
     }, TRAINING_INFO_PATH)
 
+    export_model_weights_json(model, MODEL_WEIGHTS_PATH)
     convert_model_to_tfjs(MODEL_H5_PATH, TFJS_MODEL_DIR)
 
-    print('Entrenamiento completado. Modelo guardado en Alma/www/model/alma_nlp_model.h5 y vocabulario guardado en Alma/www/model/')
+    print('Entrenamiento completado. Modelo guardado en Alma/www/model/alma_nlp_model.h5 y pesos exportados en Alma/www/model/model_weights.json')
 
 
 if __name__ == '__main__':

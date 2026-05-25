@@ -127,7 +127,7 @@ class NLPEngine {
         this.entrenarClasificador();
 
         // Datos para modelo entrenado localmente
-        this.tfModel = null;
+        this.modelWeights = null;
         this.vectorizerVocab = null;
         this.labelInverseMap = null;
         this.modelReady = false;
@@ -220,34 +220,29 @@ class NLPEngine {
      * Cargar un modelo TensorFlow.js entrenado localmente y su vocabulario
      */
     async cargarModeloLocal() {
-        if (typeof tf === 'undefined') {
-            console.warn('⚠️ TensorFlow.js no disponible en el navegador. Modelo local no cargado.');
-            return;
-        }
-
         try {
-            const modelUrl = 'model/tfjs_model/model.json';
+            const modelUrl = 'model/model_weights.json';
             const vocabUrl = 'model/vectorizer_vocab.json';
             const labelUrl = 'model/label_map.json';
 
-            const [model, vocabResponse, labelResponse] = await Promise.all([
-                tf.loadLayersModel(modelUrl),
+            const [modelResponse, vocabResponse, labelResponse] = await Promise.all([
+                fetch(modelUrl),
                 fetch(vocabUrl),
                 fetch(labelUrl)
             ]);
 
-            if (!vocabResponse.ok || !labelResponse.ok) {
-                throw new Error('No se pudieron cargar los archivos de vocabulario o etiquetas');
+            if (!modelResponse.ok || !vocabResponse.ok || !labelResponse.ok) {
+                throw new Error('No se pudieron cargar los archivos del modelo local');
             }
 
-            this.tfModel = model;
+            this.modelWeights = await modelResponse.json();
             this.vectorizerVocab = await vocabResponse.json();
             const labelMap = await labelResponse.json();
             this.labelInverseMap = Object.fromEntries(
                 Object.entries(labelMap).map(([label, index]) => [parseInt(index, 10), label])
             );
             this.modelReady = true;
-            console.log('✅ Modelo TFJS cargado correctamente');
+            console.log('✅ Modelo local de NLP cargado correctamente');
         } catch (error) {
             console.warn('⚠️ No fue posible cargar el modelo local de NLP:', error);
             this.modelReady = false;
@@ -278,7 +273,7 @@ class NLPEngine {
     }
 
     analizarConModelo(texto) {
-        if (!this.modelReady || !this.tfModel || !this.vectorizerVocab || !this.labelInverseMap) {
+        if (!this.modelReady || !this.modelWeights || !this.vectorizerVocab || !this.labelInverseMap) {
             return null;
         }
 
@@ -287,11 +282,10 @@ class NLPEngine {
             return null;
         }
 
-        const tensor = tf.tensor2d([vector]);
-        const prediction = this.tfModel.predict(tensor);
-        const scores = prediction.arraySync()[0];
-        tensor.dispose();
-        if (prediction.dispose) prediction.dispose();
+        const scores = this.predictWithWeights(vector);
+        if (!scores || scores.length === 0) {
+            return null;
+        }
 
         const maxScore = Math.max(...scores);
         const predictedIndex = scores.indexOf(maxScore);
@@ -307,6 +301,42 @@ class NLPEngine {
             tieneNegacion: this.detectarNegacion(texto),
             textoOriginal: texto
         };
+    }
+
+    predictWithWeights(vector) {
+        let activations = vector;
+        for (const layer of this.modelWeights.layers) {
+            activations = this.applyLayer(activations, layer.weights, layer.biases, layer.activation);
+        }
+        return activations;
+    }
+
+    applyLayer(inputVector, weights, biases, activation) {
+        const output = new Array(biases.length).fill(0);
+
+        for (let j = 0; j < biases.length; j++) {
+            let sum = biases[j] || 0;
+            for (let i = 0; i < inputVector.length; i++) {
+                const w = (weights[i] && weights[i][j]) || 0;
+                sum += inputVector[i] * w;
+            }
+            output[j] = sum;
+        }
+
+        if (activation === 'relu') {
+            return output.map(value => Math.max(0, value));
+        }
+        if (activation === 'softmax') {
+            return this.softmax(output);
+        }
+        return output;
+    }
+
+    softmax(values) {
+        const maxValue = Math.max(...values);
+        const exps = values.map(v => Math.exp(v - maxValue));
+        const sum = exps.reduce((total, value) => total + value, 0) || 1;
+        return exps.map(value => value / sum);
     }
 
     /**

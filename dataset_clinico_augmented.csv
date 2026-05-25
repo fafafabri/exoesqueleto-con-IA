@@ -1,42 +1,42 @@
 phrase,label
 detente,EMERGENCIA
+detenlo,EMERGENCIA
 para ahora,EMERGENCIA
+para inmediatamente,EMERGENCIA
 para ya,EMERGENCIA
 alto inmediatamente,EMERGENCIA
 detente inmediatamente,EMERGENCIA
-detente ahora,EMERGENCIA
-alto pronto,EMERGENCIA
-para inmediatamente,EMERGENCIA
 "emergencia, detente",EMERGENCIA
-"emergencia, para",EMERGENCIA
 "emergencia, detenlo",EMERGENCIA
 "hay dolor, para",EMERGENCIA
-hay molestia para,EMERGENCIA
+hay malestar para,EMERGENCIA
 inicia la flexión,FLEXION
 inicia la flexion,FLEXION
 realiza la siguiente repetición,FLEXION
 realiza la siguiente repeticion,FLEXION
+realiza la siguiente movimiento,FLEXION
+realiza la siguiente repeticiones,FLEXION
 dobla el brazo,FLEXION
 flexiona el brazo,FLEXION
 haz otra repetición,FLEXION
 haz otra repeticion,FLEXION
+haz otra movimiento,FLEXION
+haz otra repeticiones,FLEXION
 continua con el ejercicio,FLEXION
 descansa un momento,REPOSO
-pausa un momento,REPOSO
 pausa el movimiento,REPOSO
 alto el movimiento,REPOSO
 necesito relajarme,REPOSO
 haz una pausa,REPOSO
 haz una descanso,REPOSO
-haz una alto,REPOSO
 tómate un descanso,REPOSO
 tomate un descanso,REPOSO
 muéstrame mi progreso,PROGRESO
 muestrame mi progreso,PROGRESO
+muestrame mi avance,PROGRESO
 muestrame mi historial,PROGRESO
 quiero ver mis sesiones,PROGRESO
 quiero ver mis sesion,PROGRESO
-quiero ver mis entrenamientos,PROGRESO
 cómo voy avanzando,PROGRESO
 como voy avanzando,PROGRESO
 muestra mis estadísticas,PROGRESO
@@ -44,7 +44,6 @@ muestra mis estadisticas,PROGRESO
 ver historial de recuperación,PROGRESO
 ver historial de recuperacion,PROGRESO
 ajustes,AJUSTES
-opciones,AJUSTES
 configuracion,AJUSTES
 configuración,AJUSTES
 abre opciones,AJUSTES
@@ -52,11 +51,12 @@ prefiero cambiar mis parámetros,AJUSTES
 prefiero cambiar mis parametros,AJUSTES
 personaliza el sistema,AJUSTES
 modifica el sistema,AJUSTES
+configura el sistema,AJUSTES
 quiero más repeticiones,OBJETIVO
 quiero mas repeticiones,OBJETIVO
 pon el objetivo en 15,OBJETIVO
-pon el meta de repeticiones en 15,OBJETIVO
 pon el meta en 15,OBJETIVO
+pon el meta de repeticiones en 15,OBJETIVO
 quiero hacer 20 repeticiones,OBJETIVO
 cambia la meta a 12,OBJETIVO
 establece mi objetivo en 18,OBJETIVO
@@ -66,17 +66,19 @@ velocidad 5,VELOCIDAD
 rapidez 5,VELOCIDAD
 ajusta velocidad a 7,VELOCIDAD
 ajusta ritmo a 7,VELOCIDAD
+ajusta rapidez a 7,VELOCIDAD
 hazlo más lento,VELOCIDAD
-hazlo mas suave,VELOCIDAD
 hazlo mas lento,VELOCIDAD
+hazlo mas despacio,VELOCIDAD
 quiero ir más rápido,VELOCIDAD
+quiero ir mas veloz,VELOCIDAD
 quiero ir mas rapido,VELOCIDAD
 pon ritmo en 3,VELOCIDAD
 terminar sesión,TERMINAR
+terminar entrenamiento,TERMINAR
 terminar sesion,TERMINAR
 hasta mañana,TERMINAR
 hasta manana,TERMINAR
 es suficiente por hoy,TERMINAR
 finalizar ejercicio,TERMINAR
-acabar ejercicio,TERMINAR
 nos vemos luego,TERMINAR

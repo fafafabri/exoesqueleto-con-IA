@@ -1,5 +1,5 @@
 {
-  "input_dim": 102,
+  "input_dim": 103,
   "classes": [
     "AJUSTES",
     "EMERGENCIA",
@@ -10,8 +10,8 @@
     "TERMINAR",
     "VELOCIDAD"
   ],
-  "num_examples": 81,
-  "validation_accuracy": 1.0,
-  "train_size": 64,
+  "num_examples": 83,
+  "validation_accuracy": 0.8823529481887817,
+  "train_size": 66,
   "val_size": 17
 }

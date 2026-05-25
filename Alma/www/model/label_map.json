@@ -1,0 +1,10 @@
+{
+  "AJUSTES": 0,
+  "EMERGENCIA": 1,
+  "FLEXION": 2,
+  "OBJETIVO": 3,
+  "PROGRESO": 4,
+  "REPOSO": 5,
+  "TERMINAR": 6,
+  "VELOCIDAD": 7
+}

@@ -39,6 +39,7 @@ El sistema combina **Web Speech API** para reconocimiento de voz, **Natural Lang
 1. **Predictor de Riesgo de Dolor**: Analiza últimas 5 sesiones, retorna riesgo alto/medio/bajo
 2. **Recomendador de Velocidad**: Ajusta automáticamente velocidad según performance
 3. **Generador de Plan Terapéutico**: Crea recomendaciones personalizadas basadas en progreso
+4. **Entrenamiento local de NLP**: Script `train_nlp_model.py` genera un modelo Keras `.h5` y vocabulario para integración local.
 
 ### 💾 Almacenamiento Offline-First
 - **IndexedDB local**: Persiste sesiones, repeticiones, eventos de dolor

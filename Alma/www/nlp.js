@@ -126,6 +126,12 @@ class NLPEngine {
         this.intentClassifier = new SimpleBayesClassifier();
         this.entrenarClasificador();
 
+        // Datos para modelo entrenado localmente
+        this.tfModel = null;
+        this.vectorizerVocab = null;
+        this.labelInverseMap = null;
+        this.modelReady = false;
+
         // Análisis de sentimiento
         this.sentimentWords = {
             positivos: ['bien', 'mejor', 'excelente', 'bueno', 'genial', 'feliz', 'alegre', 'ánimo', 'fuerza', 'puedo', 'fantástico', 'increíble'],
@@ -211,20 +217,118 @@ class NLPEngine {
     }
 
     /**
+     * Cargar un modelo TensorFlow.js entrenado localmente y su vocabulario
+     */
+    async cargarModeloLocal() {
+        if (typeof tf === 'undefined') {
+            console.warn('⚠️ TensorFlow.js no disponible en el navegador. Modelo local no cargado.');
+            return;
+        }
+
+        try {
+            const modelUrl = 'model/tfjs_model/model.json';
+            const vocabUrl = 'model/vectorizer_vocab.json';
+            const labelUrl = 'model/label_map.json';
+
+            const [model, vocabResponse, labelResponse] = await Promise.all([
+                tf.loadLayersModel(modelUrl),
+                fetch(vocabUrl),
+                fetch(labelUrl)
+            ]);
+
+            if (!vocabResponse.ok || !labelResponse.ok) {
+                throw new Error('No se pudieron cargar los archivos de vocabulario o etiquetas');
+            }
+
+            this.tfModel = model;
+            this.vectorizerVocab = await vocabResponse.json();
+            const labelMap = await labelResponse.json();
+            this.labelInverseMap = Object.fromEntries(
+                Object.entries(labelMap).map(([label, index]) => [parseInt(index, 10), label])
+            );
+            this.modelReady = true;
+            console.log('✅ Modelo TFJS cargado correctamente');
+        } catch (error) {
+            console.warn('⚠️ No fue posible cargar el modelo local de NLP:', error);
+            this.modelReady = false;
+        }
+    }
+
+    tokenize(texto) {
+        return texto.toLowerCase()
+            .normalize('NFD')
+            .replace(/\p{Diacritic}/gu, '')
+            .replace(/[^\w\s]/g, '')
+            .split(/\s+/)
+            .filter(Boolean);
+    }
+
+    vectorizarTexto(texto) {
+        const tokens = this.tokenize(texto);
+        const vector = new Array(Object.keys(this.vectorizerVocab || {}).length).fill(0);
+
+        tokens.forEach(token => {
+            const index = this.vectorizerVocab[token];
+            if (typeof index === 'number') {
+                vector[index] += 1;
+            }
+        });
+
+        return vector;
+    }
+
+    analizarConModelo(texto) {
+        if (!this.modelReady || !this.tfModel || !this.vectorizerVocab || !this.labelInverseMap) {
+            return null;
+        }
+
+        const vector = this.vectorizarTexto(texto);
+        if (vector.every(value => value === 0)) {
+            return null;
+        }
+
+        const tensor = tf.tensor2d([vector]);
+        const prediction = this.tfModel.predict(tensor);
+        const scores = prediction.arraySync()[0];
+        tensor.dispose();
+        if (prediction.dispose) prediction.dispose();
+
+        const maxScore = Math.max(...scores);
+        const predictedIndex = scores.indexOf(maxScore);
+        const predictedLabel = this.labelInverseMap[predictedIndex];
+
+        if (!predictedLabel) {
+            return null;
+        }
+
+        return {
+            intencion: predictedLabel,
+            confianza: Math.min(1, maxScore),
+            tieneNegacion: this.detectarNegacion(texto),
+            textoOriginal: texto
+        };
+    }
+
+    /**
      * Analizar intención del usuario
      * @param {string} texto - Texto a analizar
      * @returns {object} - {intención, confianza, tieneNegacion}
      */
     analizarIntencion(texto) {
         const textoLower = texto.toLowerCase().trim();
-        
-        // Verificar negaciones
         const tieneNegacion = this.detectarNegacion(textoLower);
-        
+
+        if (this.modelReady) {
+            const modelResult = this.analizarConModelo(textoLower);
+            if (modelResult && modelResult.confianza >= 0.25) {
+                return modelResult;
+            }
+        }
+
         // Usar clasificador Bayesiano
         let intencion = null;
         let confianza = 0;
-        
+
         try {
             const clasificaciones = this.intentClassifier.getClassifications(textoLower);
             if (clasificaciones && clasificaciones.length > 0) {
@@ -545,9 +649,9 @@ class NLPEngine {
         ];
         
         ejemplosEn.forEach(ej => {
-            this.classifier.addExample(this.extraerPalabrasClaveEN(ej.texto), ej.intencion);
+            this.intentClassifier.addDocument(this.extraerPalabrasClaveEN(ej.texto), ej.intencion);
         });
-        this.classifier.train();
+        this.intentClassifier.train();
     }
 
     /**
@@ -576,15 +680,23 @@ class NLPEngine {
         ];
         
         ejemplosPt.forEach(ej => {
-            this.classifier.addExample(this.extraerPalabrasClaveES(ej.texto), ej.intencion);
+            this.intentClassifier.addDocument(this.extraerPalabrasClaveES(ej.texto), ej.intencion);
         });
-        this.classifier.train();
+        this.intentClassifier.train();
     }
 
     /**
      * NUEVO: Extraer palabras clave en English
      */
     extraerPalabrasClaveEN(texto) {
+        const palabras = texto.toLowerCase().split(/\s+/);
+        return palabras.join(' ');
+    }
+
+    /**
+     * NUEVO: Extraer palabras clave en Español/Portugués
+     */
+    extraerPalabrasClaveES(texto) {
         const palabras = texto.toLowerCase().split(/\s+/);
         return palabras.join(' ');
     }

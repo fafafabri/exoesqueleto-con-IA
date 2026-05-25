@@ -34,6 +34,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof NLPEngine !== 'undefined') {
         nlpEngine = new NLPEngine();
         console.log('✅ NLP Engine inicializado correctamente');
+
+        if (typeof tf !== 'undefined') {
+            nlpEngine.cargarModeloLocal()
+                .then(() => {
+                    if (nlpEngine.modelReady) {
+                        console.log('✅ Modelo de NLP cargado desde archivo local');
+                    }
+                })
+                .catch(error => {
+                    console.warn('⚠️ Error cargando modelo local de NLP:', error);
+                });
+        }
     } else {
         console.warn('⚠️ NLP Engine no disponible, usando análisis simple');
     }

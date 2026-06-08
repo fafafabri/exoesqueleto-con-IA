@@ -6,6 +6,7 @@
 
 // --- CONFIGURACIÓN DE HARDWARE ---
 const int SERVO_PIN = 18; // Pin de señal PWM para el servomotor
+const int BUZZER_PIN = 5; // Pin de salida para el buzzer/speaker
 Servo exoServo;
 
 // --- ESTADO DEL SISTEMA ---
@@ -34,6 +35,17 @@ int delayForSpeed(int speedLevel) {
   return map(speedLevel, 1, 10, 100, 20);
 }
 
+// Función para emitir sonido en el buzzer
+void emitirSonido(int frecuencia, int duracion) {
+  // Usar ledcSetup para PWM de alta frecuencia en el ESP32
+  ledcSetup(0, frecuencia, 8); // Canal 0, frecuencia, 8-bit resolución
+  ledcAttachPin(BUZZER_PIN, 0); // Adjuntar pin al canal
+  ledcWrite(0, 200); // Volumen ~78% del máximo
+  delay(duracion);
+  ledcWrite(0, 0); // Apagar sonido
+  ledcDetachPin(BUZZER_PIN); // Desadjuntar pin
+}
+
 void moverServoA(int anguloDestino, int velocidad) {
   anguloDestino = constrain(anguloDestino, 0, 180);
   int paso = anguloDestino > currentAngle ? 1 : -1;
@@ -43,6 +55,15 @@ void moverServoA(int anguloDestino, int velocidad) {
     currentAngle += paso;
     exoServo.write(currentAngle);
     delay(retraso);
+  }
+  
+  // Emitir sonido al completar movimiento
+  if (anguloDestino > 45) {
+    // Sonido agudo para subida (FLEXION)
+    emitirSonido(1000, 100); // 1kHz, 100ms
+  } else {
+    // Sonido grave para bajada (REPOSO)
+    emitirSonido(500, 100); // 500Hz, 100ms
   }
 }
 
@@ -131,12 +152,18 @@ class MyCallbacks : public BLECharacteristicCallbacks {
 void setup() {
   Serial.begin(115200);
 
+  // Inicializar servo
   exoServo.setPeriodHertz(50);
   exoServo.attach(SERVO_PIN, 500, 2500);
   exoServo.write(0);
   currentAngle = 0;
   safeMode = true;
   Serial.println("Motor inicializado y asegurado en 0°.");
+
+  // Inicializar buzzer
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+  Serial.println("Buzzer inicializado.");
 
   BLEDevice::init("EXO_UPN");
   BLEServer *pServer = BLEDevice::createServer();
